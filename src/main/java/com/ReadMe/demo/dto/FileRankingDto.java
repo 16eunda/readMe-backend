@@ -7,6 +7,7 @@ public record FileRankingDto(
         String title,
         long readCount,
         Double progress,
+        String uri,
         int rating,
         LocalDateTime lastReadAt
 ) {}
