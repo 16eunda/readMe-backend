@@ -39,3 +39,5 @@ out/
 # API 키 보호
 application.yml
 application-*.yml
+
+.env
