@@ -1,23 +1,29 @@
 package com.ReadMe.demo.service;
 
-import lombok.RequiredArgsConstructor;
-import org.springframework.data.redis.core.StringRedisTemplate;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.util.concurrent.ConcurrentLinkedQueue;
+
 @Service
-@RequiredArgsConstructor
+@Slf4j
 public class QueueService {
 
-    private final StringRedisTemplate redisTemplate;
+    private final ConcurrentLinkedQueue<Long> queue = new ConcurrentLinkedQueue<>();
 
-    private static final String QUEUE_NAME = "analysisQueue";
-
-    // 작업 추가 (enqueue)
+    // 작업 추가
     public void enqueue(Long fileId) {
+        queue.offer(fileId);
+        log.info("📥 Queue 등록 완료: {} (대기: {}건)", fileId, queue.size());
+    }
 
-        redisTemplate.opsForList()
-                .leftPush(QUEUE_NAME, fileId.toString());
+    // 작업 꺼내기 (없으면 null)
+    public Long dequeue() {
+        return queue.poll();
+    }
 
-        System.out.println("📥 Queue 등록 완료: " + fileId);
+    // 대기 중인 작업 수
+    public int size() {
+        return queue.size();
     }
 }
