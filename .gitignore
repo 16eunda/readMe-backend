@@ -40,4 +40,14 @@ out/
 application.yml
 application-*.yml
 
-.env
+### 개인 문서 (내가 볼려고 만든 것) ###
+docs/
+*.md
+!README.md
+RECOMMENDATION_LOGIC.md
+FIX_COMPACT_SOURCE_ERROR.md
+
+### 기타 ###
+*.log
+*.swp
+.DS_Store
