@@ -40,6 +40,9 @@ out/
 application.yml
 application-*.yml
 
+#
+.env
+
 ### 개인 문서 (내가 볼려고 만든 것) ###
 docs/
 *.md
