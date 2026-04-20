@@ -36,10 +36,6 @@ out/
 ### VS Code ###
 .vscode/
 
-# API 키 보호
-application.yml
-application-*.yml
-
 #
 .env
 
