@@ -106,6 +106,8 @@ public class FileController {
             @RequestHeader(value = "X-Device-Id", required = false) String deviceId,
             Authentication authentication
     ) {
+        System.out.println("authentication: " + authentication);
+
         if (authentication != null && authentication.isAuthenticated()) {
             System.out.println("히스토리 조회 - 인증된 사용자: ");
             Long userId = ((CustomUserDetails) authentication.getPrincipal()).getUserId();
