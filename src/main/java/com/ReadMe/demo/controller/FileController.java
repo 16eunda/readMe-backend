@@ -39,7 +39,7 @@ public class FileController {
     // GET /files?page=0&size=15&sort=date,desc
     @GetMapping
     public Page<FileDto> getFiles(
-            @RequestParam(required = false) String path,
+            @RequestParam(defaultValue = "root", required = false) String path,
             @RequestHeader(value = "X-Device-Id", required = false) String deviceId,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "15") int size,
@@ -107,9 +107,11 @@ public class FileController {
             Authentication authentication
     ) {
         if (authentication != null && authentication.isAuthenticated()) {
+            System.out.println("히스토리 조회 - 인증된 사용자: ");
             Long userId = ((CustomUserDetails) authentication.getPrincipal()).getUserId();
             return fileService.getRecentFilesByUserId(userId);
         } else if (deviceId != null && !deviceId.isEmpty()) {
+            System.out.println("히스토리 조회 - 게스트 사용자, deviceId: ");
             return fileService.getRecentFilesByDeviceId(deviceId);
         } else {
             return List.of(); // 빈 리스트 반환
