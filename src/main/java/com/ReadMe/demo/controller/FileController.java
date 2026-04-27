@@ -86,7 +86,7 @@ public class FileController {
     }
 
     // 파일삭제 (여러개 삭제 지원)
-    @DeleteMapping("/files")
+    @DeleteMapping
     public void deleteFiles(@RequestBody FileDeleteRequest request,
                             @RequestHeader(value = "X-Device-Id", required = false) String deviceId,
                             Authentication authentication) {
@@ -106,14 +106,11 @@ public class FileController {
             @RequestHeader(value = "X-Device-Id", required = false) String deviceId,
             Authentication authentication
     ) {
-        System.out.println("authentication: " + authentication);
 
         if (authentication != null && authentication.isAuthenticated()) {
-            System.out.println("히스토리 조회 - 인증된 사용자: ");
             Long userId = ((CustomUserDetails) authentication.getPrincipal()).getUserId();
             return fileService.getRecentFilesByUserId(userId);
         } else if (deviceId != null && !deviceId.isEmpty()) {
-            System.out.println("히스토리 조회 - 게스트 사용자, deviceId: ");
             return fileService.getRecentFilesByDeviceId(deviceId);
         } else {
             return List.of(); // 빈 리스트 반환
