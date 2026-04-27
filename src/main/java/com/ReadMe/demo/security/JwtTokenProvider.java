@@ -54,20 +54,23 @@ public class JwtTokenProvider {
                 .compact();
     }
 
+    private Key getSigningKey() {
+        return Keys.hmacShaKeyFor(secretKey.getBytes(StandardCharsets.UTF_8));
+    }
+
     /**
      * 토큰 유효성 검증
      */
     public boolean validateToken(String token) {
         try {
-            Jwts.parser()
-                    .setSigningKey(secretKey)
+            Jwts.parserBuilder()
+                    .setSigningKey(getSigningKey())
+                    .build()
                     .parseClaimsJws(token);
             return true;
         } catch (ExpiredJwtException e) {
-            // 만료된 토큰
             return false;
         } catch (Exception e) {
-            // 잘못된 토큰
             return false;
         }
     }
@@ -76,8 +79,9 @@ public class JwtTokenProvider {
      * 토큰에서 userId 추출
      */
     public String getUserIdFromToken(String token) {
-        Claims claims = Jwts.parser()
-                .setSigningKey(secretKey)
+        Claims claims = Jwts.parserBuilder()
+                .setSigningKey(getSigningKey())
+                .build()
                 .parseClaimsJws(token)
                 .getBody();
 
