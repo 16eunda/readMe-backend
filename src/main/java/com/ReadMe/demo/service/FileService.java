@@ -8,6 +8,7 @@ import com.ReadMe.demo.dto.AiInfoResponse;
 import com.ReadMe.demo.dto.FileDto;
 import com.ReadMe.demo.repository.FileReadLogRepository;
 import com.ReadMe.demo.repository.FileRepository;
+import com.ReadMe.demo.security.CustomUserDetails;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -67,7 +68,7 @@ public class FileService {
 
         // 로그인 상태면 userId도 저
         if (authentication != null && authentication.isAuthenticated()) {
-            UserEntity user = (UserEntity) authentication.getPrincipal();
+            UserEntity user = ((CustomUserDetails) authentication.getPrincipal()).getUser();
             saved.setUser(user);
         }
 
@@ -152,9 +153,9 @@ public class FileService {
         UserEntity user = null;
 
         if (authentication != null && authentication.isAuthenticated()
-                && authentication.getPrincipal() instanceof UserEntity) {
+                && authentication.getPrincipal() instanceof CustomUserDetails) {
 
-            user = (UserEntity) authentication.getPrincipal();
+            user = ((CustomUserDetails) authentication.getPrincipal()).getUser();
         }
 
         if (user != null) {
@@ -198,9 +199,9 @@ public class FileService {
         UserEntity user = null;
 
         if (authentication != null && authentication.isAuthenticated()
-                && authentication.getPrincipal() instanceof UserEntity) {
+                && authentication.getPrincipal() instanceof CustomUserDetails) {
 
-            user = (UserEntity) authentication.getPrincipal();
+            user = ((CustomUserDetails) authentication.getPrincipal()).getUser();
         }
 
         // 로그인 상태면 userId로 삭제, 게스트 상태면 deviceId로 삭제
@@ -251,8 +252,8 @@ public class FileService {
 
             UserEntity user = null;
             if (authentication != null && authentication.isAuthenticated()
-                    && authentication.getPrincipal() instanceof UserEntity) {
-                user = (UserEntity) authentication.getPrincipal();
+                    && authentication.getPrincipal() instanceof CustomUserDetails) {
+                user = ((CustomUserDetails) authentication.getPrincipal()).getUser();
             }
 
             if (subscriptionService.isPremium(user, deviceId)) {
@@ -335,8 +336,8 @@ public class FileService {
         // 미분석 → 프리미엄이면 큐에 넣기
         UserEntity user = null;
         if (authentication != null && authentication.isAuthenticated()
-                && authentication.getPrincipal() instanceof UserEntity) {
-            user = (UserEntity) authentication.getPrincipal();
+                && authentication.getPrincipal() instanceof CustomUserDetails) {
+            user = ((CustomUserDetails) authentication.getPrincipal()).getUser();
         }
 
         if (subscriptionService.isPremium(user, deviceId)) {
