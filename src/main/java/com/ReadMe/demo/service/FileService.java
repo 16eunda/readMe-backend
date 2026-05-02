@@ -67,7 +67,8 @@ public class FileService {
         saved.setDeviceId(deviceId);
 
         // 로그인 상태면 userId도 저
-        if (authentication != null && authentication.isAuthenticated()) {
+        if (authentication != null && authentication.isAuthenticated()
+                && authentication.getPrincipal() instanceof CustomUserDetails) {
             UserEntity user = ((CustomUserDetails) authentication.getPrincipal()).getUser();
             saved.setUser(user);
         }
@@ -152,7 +153,8 @@ public class FileService {
 
         UserEntity user = null;
 
-        if (authentication != null && authentication.isAuthenticated()) {
+        if (authentication != null && authentication.isAuthenticated()
+                && authentication.getPrincipal() instanceof CustomUserDetails) {
             user = ((CustomUserDetails) authentication.getPrincipal()).getUser();
         }
 
