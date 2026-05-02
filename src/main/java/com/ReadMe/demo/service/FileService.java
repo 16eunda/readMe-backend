@@ -152,9 +152,7 @@ public class FileService {
 
         UserEntity user = null;
 
-        if (authentication != null && authentication.isAuthenticated()
-                && authentication.getPrincipal() instanceof CustomUserDetails) {
-
+        if (authentication != null && authentication.isAuthenticated()) {
             user = ((CustomUserDetails) authentication.getPrincipal()).getUser();
         }
 
