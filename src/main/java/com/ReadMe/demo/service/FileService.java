@@ -153,15 +153,10 @@ public class FileService {
 
         UserEntity user = null;
 
-        System.out.println("검색 키워드: " + keyword);
-
-
         if (authentication != null && authentication.isAuthenticated()
                 && authentication.getPrincipal() instanceof CustomUserDetails) {
             user = ((CustomUserDetails) authentication.getPrincipal()).getUser();
         }
-
-        System.out.println("user: " + user);
 
 
         if (user != null) {
