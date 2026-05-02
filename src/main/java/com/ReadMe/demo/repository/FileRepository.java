@@ -46,11 +46,11 @@ public interface FileRepository extends JpaRepository<FileEntity, Long> {
 
     // 검색 메서드 추가
     Page<FileEntity> findByUserAndTitleContainingIgnoreCase(
-            String keyword, UserEntity user, Pageable pageable
+            UserEntity user, String keyword, Pageable pageable
     );
 
     Page<FileEntity> findByDeviceIdAndUserIsNullAndTitleContainingIgnoreCase(
-            String keyword, String deviceId, Pageable pageable
+            String deviceId, String keyword, Pageable pageable
     );
 
     // ===== 통계용 메서드 (userId 필터링) =====

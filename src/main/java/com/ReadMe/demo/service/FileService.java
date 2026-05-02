@@ -153,18 +153,24 @@ public class FileService {
 
         UserEntity user = null;
 
+        System.out.println("검색 키워드: " + keyword);
+
+
         if (authentication != null && authentication.isAuthenticated()
                 && authentication.getPrincipal() instanceof CustomUserDetails) {
             user = ((CustomUserDetails) authentication.getPrincipal()).getUser();
         }
 
+        System.out.println("user: " + user);
+
+
         if (user != null) {
             // 로그인 상태: userId로 검색
-            return fileRepository.findByUserAndTitleContainingIgnoreCase(keyword, user, pageable)
+            return fileRepository.findByUserAndTitleContainingIgnoreCase(user, keyword, pageable)
                     .map(FileDto::from);
         } else if (deviceId != null && !deviceId.isEmpty()) {
             // 게스트 상태: deviceId로 검색
-            return fileRepository.findByDeviceIdAndUserIsNullAndTitleContainingIgnoreCase(keyword, deviceId, pageable)
+            return fileRepository.findByDeviceIdAndUserIsNullAndTitleContainingIgnoreCase(deviceId, keyword, pageable)
                     .map(FileDto::from);
         }
 
