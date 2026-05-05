@@ -1,11 +1,11 @@
 package com.ReadMe.demo.service;
 
 import com.ReadMe.demo.domain.FileEntity;
-import com.ReadMe.demo.domain.UserEntity;
 import com.ReadMe.demo.dto.FileDto;
 import com.ReadMe.demo.dto.RecommendationResponse;
 import com.ReadMe.demo.repository.FileRepository;
 import com.ReadMe.demo.repository.RecRepository;
+import com.ReadMe.demo.security.CustomUserDetails;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
@@ -320,8 +320,8 @@ public class RecService {
 
     private Long extractUserId(Authentication authentication) {
         if (authentication != null && authentication.isAuthenticated()
-                && authentication.getPrincipal() instanceof UserEntity user) {
-            return user.getId();
+                && authentication.getPrincipal() instanceof CustomUserDetails details) {
+            return details.getUserId();
         }
         return null;
     }

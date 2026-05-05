@@ -6,6 +6,7 @@ import com.ReadMe.demo.exception.UnauthorizedException;
 import com.ReadMe.demo.repository.FileRepository;
 import com.ReadMe.demo.repository.FolderRepository;
 import com.ReadMe.demo.repository.UserRepository;
+import com.ReadMe.demo.security.CustomUserDetails;
 import com.ReadMe.demo.security.JwtTokenProvider;
 import jakarta.transaction.Transactional;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -131,11 +132,11 @@ public class AuthService {
     // 회원 탈퇴
     @Transactional
     public void withdraw(Authentication authentication) {
-        UserEntity user = (UserEntity) authentication.getPrincipal();
-
-        if (user == null) {
+        if (authentication == null || !(authentication.getPrincipal() instanceof CustomUserDetails)) {
             throw new UnauthorizedException("로그인이 필요합니다.");
         }
+
+        UserEntity user = ((CustomUserDetails) authentication.getPrincipal()).getUser();
 
         // 이미 탈퇴한 경우 방지
         if (user.getDeletedAt() != null) {

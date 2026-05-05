@@ -20,7 +20,8 @@ public class FileStatsService {
         long fiveStarCount;
 
         // userId가 있으면 userId로 조회 (로그인 사용자)
-        if (authentication != null && authentication.isAuthenticated()) {
+        if (authentication != null && authentication.isAuthenticated()
+                && authentication.getPrincipal() instanceof CustomUserDetails) {
             Long userId = ((CustomUserDetails) authentication.getPrincipal()).getUserId();
             totalCount = fileRepository.countByUserId(userId);
             completedCount = fileRepository.countCompletedFilesByUserId(userId);

@@ -8,6 +8,7 @@ import com.ReadMe.demo.dto.FolderRequest;
 import com.ReadMe.demo.exception.FolderNotEmptyException;
 import com.ReadMe.demo.repository.FileRepository;
 import com.ReadMe.demo.repository.FolderRepository;
+import com.ReadMe.demo.security.CustomUserDetails;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
@@ -22,23 +23,30 @@ public class FolderService {
     private final FolderRepository folderRepository;
     private final FileRepository fileRepository;
 
+    // 공통 유틸 - Authentication에서 UserEntity 추출
+    private UserEntity extractUser(Authentication authentication) {
+        if (authentication != null
+                && authentication.isAuthenticated()
+                && authentication.getPrincipal() instanceof CustomUserDetails) {
+            return ((CustomUserDetails) authentication.getPrincipal()).getUser();
+        }
+        return null;
+    }
+
     // userId 또는 deviceId로 폴더 조회 (보안 필터링)
     public List<FolderEntity> getFolders(
             String path,
             String deviceId,
             Authentication authentication
     ) {
-        if (authentication != null && authentication.isAuthenticated()) {
-            UserEntity user = (UserEntity) authentication.getPrincipal();
-            if (path == null) {
-                return folderRepository.findByUser(user); // 전체 조회
-            }
+        UserEntity user = extractUser(authentication);
+
+        if (user != null) {
+            if (path == null) return folderRepository.findByUser(user);
             return folderRepository.findByUserAndPath(user, path);
         }
 
-        if (path == null) {
-            return folderRepository.findByDeviceIdAndUserIsNull(deviceId); // 전체 조회
-        }
+        if (path == null) return folderRepository.findByDeviceIdAndUserIsNull(deviceId);
         return folderRepository.findByDeviceIdAndUserIsNullAndPath(deviceId, path);
     }
 
@@ -47,14 +55,13 @@ public class FolderService {
             FolderRequest request,
             String deviceId,
             Authentication authentication
-            ) {
-
+    ) {
         FolderEntity folder = new FolderEntity();
         folder.setName(request.getName());
         folder.setPath(request.getPath());
 
-        if (authentication != null && authentication.isAuthenticated()) {
-            UserEntity user = (UserEntity) authentication.getPrincipal();
+        UserEntity user = extractUser(authentication);
+        if (user != null) {
             folder.setUser(user);
         } else {
             folder.setDeviceId(deviceId);
@@ -114,27 +121,10 @@ public class FolderService {
         FolderEntity folder = folderRepository.findById(request.getId())
                 .orElseThrow(() -> new RuntimeException("폴더를 찾을 수 없습니다"));
 
-        UserEntity user = null;
-
-        if (authentication != null && authentication.isAuthenticated()
-                && authentication.getPrincipal() instanceof UserEntity) {
-            user = (UserEntity) authentication.getPrincipal();
-        }
+        UserEntity user = extractUser(authentication);
 
         // owner 검증
-        if (user != null) {
-
-            if (!user.equals(folder.getUser())) {
-                throw new RuntimeException("삭제 권한 없음");
-            }
-
-        } else {
-
-            if (folder.getUser() != null ||
-                    !deviceId.equals(folder.getDeviceId())) {
-                throw new RuntimeException("삭제 권한 없음");
-            }
-        }
+        assertFolderOwner(folder, user, deviceId);
 
         // 하위 폴더 id 수집
         List<Long> folderIds = collectFolderIds(folder, user, deviceId);
@@ -183,11 +173,7 @@ public class FolderService {
         List<Long> folderIds = request.getFolderIds();
         boolean force = request.isForce();
 
-        // 로그인 정보 확인
-        UserEntity user = null;
-        if (authentication != null && authentication.isAuthenticated()) {
-            user = (UserEntity) authentication.getPrincipal();
-        }
+        UserEntity user = extractUser(authentication);
 
         Set<Long> allFolderIds = new HashSet<>();
 
