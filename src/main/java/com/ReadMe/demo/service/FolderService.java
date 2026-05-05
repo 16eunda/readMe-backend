@@ -4,6 +4,7 @@ import com.ReadMe.demo.domain.FolderEntity;
 import com.ReadMe.demo.domain.UserEntity;
 import com.ReadMe.demo.dto.FolderBulkDeleteInfo;
 import com.ReadMe.demo.dto.FolderBulkDeleteRequest;
+import com.ReadMe.demo.dto.FolderDto;
 import com.ReadMe.demo.dto.FolderRequest;
 import com.ReadMe.demo.exception.FolderNotEmptyException;
 import com.ReadMe.demo.repository.FileRepository;
@@ -34,7 +35,7 @@ public class FolderService {
     }
 
     // userId 또는 deviceId로 폴더 조회 (보안 필터링)
-    public List<FolderEntity> getFolders(
+    public List<FolderDto> getFolders(
             String path,
             String deviceId,
             Authentication authentication
@@ -42,16 +43,20 @@ public class FolderService {
         UserEntity user = extractUser(authentication);
 
         if (user != null) {
-            if (path == null) return folderRepository.findByUser(user);
-            return folderRepository.findByUserAndPath(user, path);
+            List<FolderEntity> folders = (path == null)
+                    ? folderRepository.findByUser(user)
+                    : folderRepository.findByUserAndPath(user, path);
+            return folders.stream().map(FolderDto::from).toList();
         }
 
-        if (path == null) return folderRepository.findByDeviceIdAndUserIsNull(deviceId);
-        return folderRepository.findByDeviceIdAndUserIsNullAndPath(deviceId, path);
+        List<FolderEntity> folders = (path == null)
+                ? folderRepository.findByDeviceIdAndUserIsNull(deviceId)
+                : folderRepository.findByDeviceIdAndUserIsNullAndPath(deviceId, path);
+        return folders.stream().map(FolderDto::from).toList();
     }
 
     // 폴더 저장 (로그인 여부에 따라 userId 또는 deviceId로 저장)
-    public FolderEntity save(
+    public FolderDto save(
             FolderRequest request,
             String deviceId,
             Authentication authentication
@@ -67,11 +72,11 @@ public class FolderService {
             folder.setDeviceId(deviceId);
         }
 
-        return folderRepository.save(folder);
+        return FolderDto.from(folderRepository.save(folder));
     }
 
     // 폴더 업데이트 (이름, 경로)
-    public FolderEntity updateFolder(Long id, Map<String, Object> body) {
+    public FolderDto updateFolder(Long id, Map<String, Object> body) {
         FolderEntity folder = folderRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("폴더를 찾을 수 없습니다"));
 
@@ -82,7 +87,7 @@ public class FolderService {
             folder.setPath((String) body.get("path"));
         }
 
-        return folderRepository.save(folder);
+        return FolderDto.from(folderRepository.save(folder));
     }
 
     // 폴더 ID로 하위 폴더 ID 수집 (BFS)
@@ -232,16 +237,11 @@ public class FolderService {
         }
     }
 
-    public FolderEntity moveFolder(Long id, String newPath) {
+    public FolderDto moveFolder(Long id, String newPath) {
         FolderEntity folder = folderRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Folder not found: " + id));
 
-        // 해당 폴더의 path 업데이트
         folder.setPath(newPath);
-        return folderRepository.save(folder);
-
-        // 참고:
-        // - 해당 폴더 안의 파일들은 path가 폴더 id를 가리키므로 변경 불필요
-        // - 하위 폴더들의 path는 부모 폴더 id이므로 변경 불필요
+        return FolderDto.from(folderRepository.save(folder));
     }
 }
