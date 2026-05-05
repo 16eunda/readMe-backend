@@ -87,4 +87,17 @@ public class JwtTokenProvider {
 
         return claims.getSubject();
     }
+
+    /**
+     * 토큰에서 만료시간 추출
+     */
+    public Date getExpirationDateFromToken(String token) {
+        Claims claims = Jwts.parserBuilder()
+                .setSigningKey(getSigningKey())
+                .build()
+                .parseClaimsJws(token)
+                .getBody();
+
+        return claims.getExpiration();
+    }
 }

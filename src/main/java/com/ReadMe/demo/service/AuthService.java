@@ -92,6 +92,11 @@ public class AuthService {
         String accessToken = jwtTokenProvider.generateAccessToken(user.getId().toString());
         String refreshToken = jwtTokenProvider.generateRefreshToken(user.getId().toString());
 
+        // 만료시간 찍기
+        System.out.println("AccessToken 만료시간: " + jwtTokenProvider.getExpirationDateFromToken(accessToken));
+        System.out.println("RefreshToken 만료시간: " + jwtTokenProvider.getExpirationDateFromToken(refreshToken));
+
+
         // 3. 응답
         LoginResponse response = new LoginResponse();
         response.setUserId(user.getId().toString());
