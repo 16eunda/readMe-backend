@@ -45,12 +45,13 @@ public class JwtTokenProvider {
     public String generateRefreshToken(String userId) {
         Date now = new Date();
         Date expiryDate = new Date(now.getTime() + REFRESH_TOKEN_VALIDITY);
+        Key key = Keys.hmacShaKeyFor(secretKey.getBytes(StandardCharsets.UTF_8));
 
         return Jwts.builder()
                 .setSubject(userId)
                 .setIssuedAt(now)
                 .setExpiration(expiryDate)
-                .signWith(SignatureAlgorithm.HS512, secretKey)
+                .signWith(key, SignatureAlgorithm.HS512)
                 .compact();
     }
 
