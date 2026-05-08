@@ -68,9 +68,9 @@ public class FolderService {
         UserEntity user = extractUser(authentication);
         if (user != null) {
             folder.setUser(user);
-        } else {
-            folder.setDeviceId(deviceId);
         }
+
+        folder.setDeviceId(deviceId);
 
         return FolderDto.from(folderRepository.save(folder));
     }

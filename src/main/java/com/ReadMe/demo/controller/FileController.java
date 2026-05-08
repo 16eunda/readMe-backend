@@ -148,26 +148,4 @@ public class FileController {
     ) {
         return ResponseEntity.ok(fileService.getAiInfo(id, deviceId, authentication));
     }
-
-    @GetMapping("/test-seed")
-    public String seedTestData(@RequestParam(defaultValue = "1000") int count) {
-        Random rand = new Random();
-        String[] genres = {"소설", "에세이", "자기계발", "기술서", "역사", "과학"};
-        String[] authors = {"김", "이", "박", "최", "정", "강", "조", "윤"};
-
-        for (int i = 1; i <= count; i++) {
-            FileEntity file = new FileEntity();
-            file.setTitle(genres[rand.nextInt(genres.length)] + "_" +
-                    authors[rand.nextInt(authors.length)] + "_" + i);
-            file.setPath("root");
-            file.setRating(rand.nextInt(5) + 1); // 1-5점
-            file.setReview(i % 3 == 0 ? "재미있게 읽었습니다" : null);
-            file.setDate(LocalDateTime.now().minusDays(rand.nextInt(365)));
-            file.setPreview("테스트 미리보기 내용 " + i);
-
-            fileService.saveFile(file, null, null);
-        }
-
-        return count + "개의 테스트 파일이 생성되었습니다";
-    }
 }

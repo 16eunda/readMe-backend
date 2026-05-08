@@ -49,19 +49,6 @@ public class SubscriptionService {
                 .orElse(false);
     }
 
-    // 구독 정보 조회
-    public Subscription getActiveSubscription(UserEntity user, String deviceId) {
-        // 기존 로직
-        if (user == null && deviceId == null) {
-            return null;
-        }
-
-        Optional<Subscription> sub = (user != null)
-                ? repo.findTopByUserAndStatusOrderByExpiresAtDesc(user, SubscriptionStatus.ACTIVE)
-                : repo.findTopByDeviceIdAndStatusOrderByExpiresAtDesc(deviceId, SubscriptionStatus.ACTIVE);
-
-        return sub.orElse(null);
-    }
 
     // 구독 처리
     // 프론트에서 영수증(receipt) 또는 구매 토큰(purchaseToken)과 함께 구독 요청
@@ -126,6 +113,7 @@ public class SubscriptionService {
         return Map.of("isPremium", true);
     }
 
+    // 애플 영수증 검증
     private String verifyAppleReceipt(String receipt) {
         // 애플 서버에 POST 요청
         String url = "https://buy.itunes.apple.com/verifyReceipt"; // 프로덕션

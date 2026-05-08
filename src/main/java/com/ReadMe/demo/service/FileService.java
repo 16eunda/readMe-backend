@@ -336,11 +336,14 @@ public class FileService {
 
         // 미분석 → 프리미엄이면 큐에 넣기
         UserEntity user = null;
+
+        // 로그인 상태면 userId로, 게스트면 deviceId로 프리미엄 여부 판단
         if (authentication != null && authentication.isAuthenticated()
                 && authentication.getPrincipal() instanceof CustomUserDetails) {
             user = ((CustomUserDetails) authentication.getPrincipal()).getUser();
         }
 
+        // 프리미엄이면 큐에 넣고 "분석 중" 상태 반환, 비프리미엄이면 "프리미엄 필요" 상태 반환
         if (subscriptionService.isPremium(user, deviceId)) {
             if (!"QUEUED".equals(file.getAnalysisStatus()) && !"PROCESSING".equals(file.getAnalysisStatus())) {
                 file.setAnalysisStatus("QUEUED");
