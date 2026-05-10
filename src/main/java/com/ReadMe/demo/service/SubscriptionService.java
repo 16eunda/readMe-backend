@@ -20,6 +20,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
 import java.io.FileInputStream;
+import java.io.InputStream;
+import org.springframework.core.io.ClassPathResource;
 import java.time.LocalDateTime;
 import java.util.Base64;
 import java.util.List;
@@ -80,7 +82,7 @@ public class SubscriptionService {
             if (transactionId.isEmpty()) throw new RuntimeException("유효하지 않은 영수증");
         } else {
             // 2. 구글 서버에 purchaseToken 검증
-            boolean valid = verifyGooglePurchase(req.getPurchaseToken());
+            boolean valid = verifyGooglePurchase(req.getPurchaseToken(), req.getProductId());
             if (!valid) throw new RuntimeException("유효하지 않은 구매");
         }
 
@@ -130,20 +132,19 @@ public class SubscriptionService {
         return "test";
     }
 
-    private boolean verifyGooglePurchase(String purchaseToken) {
+    private boolean verifyGooglePurchase(String purchaseToken, String productId) {
         // Google Play Developer API 사용
         // GET https://androidpublisher.googleapis.com/androidpublisher/v3/
         //     applications/{packageName}/purchases/subscriptions/{subscriptionId}/tokens/{token}
         // → 응답의 paymentState == 1 이면 유효
 
         try {
-            String packageName = "com.your.app"; // 앱 패키지명
-            String subscriptionId = "premium_monthly"; // 상품 ID
+            String packageName = "com.readme.app"; // 앱 패키지명
 
             String url = String.format(
                     "https://androidpublisher.googleapis.com/androidpublisher/v3/applications/%s/purchases/subscriptions/%s/tokens/%s",
                     packageName,
-                    subscriptionId,
+                    productId,
                     purchaseToken
             );
 
@@ -174,8 +175,9 @@ public class SubscriptionService {
 
     // Google API 호출 시 필요한 액세스 토큰 발급
     private String getAccessToken() throws Exception {
+        InputStream stream = new ClassPathResource("service-account.json").getInputStream();
         GoogleCredentials credentials = GoogleCredentials
-                .fromStream(new FileInputStream("service-account.json"))
+                .fromStream(stream)
                 .createScoped(List.of("https://www.googleapis.com/auth/androidpublisher"));
 
         credentials.refreshIfExpired();

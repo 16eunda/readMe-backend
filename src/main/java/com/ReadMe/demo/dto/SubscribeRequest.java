@@ -11,4 +11,5 @@ public class SubscribeRequest {
     private Platform platform;    // "ios" | "android"
     private String receipt;     // iOS 영수증
     private String purchaseToken; // Android
+    private String productId;     //
 }
