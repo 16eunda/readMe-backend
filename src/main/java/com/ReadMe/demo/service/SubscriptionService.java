@@ -185,7 +185,19 @@ public class SubscriptionService {
 
     // Google API 호출 시 필요한 액세스 토큰 발급
     private String getAccessToken() throws Exception {
-        InputStream stream = new ClassPathResource("service-account.json").getInputStream();
+        InputStream stream;
+
+        // Render 등 서버 환경: 환경변수에서 JSON 읽기
+        String serviceAccountJson = System.getenv("GOOGLE_SERVICE_ACCOUNT_JSON");
+        if (serviceAccountJson != null && !serviceAccountJson.isBlank()) {
+            log.info("🔑 서비스 계정: 환경변수에서 로드");
+            stream = new java.io.ByteArrayInputStream(serviceAccountJson.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        } else {
+            // 로컬 개발환경: resources/service-account.json 파일 사용
+            log.info("🔑 서비스 계정: ClassPath 파일에서 로드");
+            stream = new ClassPathResource("service-account.json").getInputStream();
+        }
+
         GoogleCredentials credentials = GoogleCredentials
                 .fromStream(stream)
                 .createScoped(List.of("https://www.googleapis.com/auth/androidpublisher"));
