@@ -307,16 +307,12 @@ public class FileService {
 
     // 최근 읽은 파일 조회 (히스토리)
     public List<FileDto> getRecentFilesByUserId(Long userId) {
-        return fileRepository
-                .findTop50ByUserIdAndLastReadAtIsNotNullOrderByLastReadAtDesc(userId)
-                .stream().map(FileDto::from).toList();
+        return fileRepository.findRecentFileDtosByUserId(userId);
     }
 
     // 최근 읽은 파일 조회 (히스토리, 게스트용)
     public List<FileDto> getRecentFilesByDeviceId(String deviceId) {
-        return fileRepository
-                .findTop50ByDeviceIdAndUserIsNullAndLastReadAtIsNotNullOrderByLastReadAtDesc(deviceId)
-                .stream().map(FileDto::from).toList();
+        return fileRepository.findRecentFileDtosByDeviceId(deviceId);
     }
 
 

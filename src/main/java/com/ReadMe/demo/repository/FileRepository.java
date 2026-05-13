@@ -3,6 +3,7 @@ package com.ReadMe.demo.repository;
 import com.ReadMe.demo.domain.FileEntity;
 import com.ReadMe.demo.domain.FileType;
 import com.ReadMe.demo.domain.UserEntity;
+import com.ReadMe.demo.dto.FileDto;
 import jakarta.transaction.Transactional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -91,6 +92,30 @@ public interface FileRepository extends JpaRepository<FileEntity, Long> {
 
     // deviceId별 최근 읽은 파일 (게스트)
     List<FileEntity> findTop50ByDeviceIdAndUserIsNullAndLastReadAtIsNotNullOrderByLastReadAtDesc(String deviceId);
+
+    // ===== 히스토리용 - @Lob 제외하고 필요한 컬럼만 조회 =====
+
+    @Query("""
+        SELECT new com.ReadMe.demo.dto.FileDto(
+            f.id, f.title, f.preview, f.date, f.rating, f.uri, f.path, f.review
+        )
+        FROM FileEntity f
+        WHERE f.user.id = :userId AND f.lastReadAt IS NOT NULL
+        ORDER BY f.lastReadAt DESC
+        LIMIT 50
+    """)
+    List<FileDto> findRecentFileDtosByUserId(@Param("userId") Long userId);
+
+    @Query("""
+        SELECT new com.ReadMe.demo.dto.FileDto(
+            f.id, f.title, f.preview, f.date, f.rating, f.uri, f.path, f.review
+        )
+        FROM FileEntity f
+        WHERE f.deviceId = :deviceId AND f.user IS NULL AND f.lastReadAt IS NOT NULL
+        ORDER BY f.lastReadAt DESC
+        LIMIT 50
+    """)
+    List<FileDto> findRecentFileDtosByDeviceId(@Param("deviceId") String deviceId);
 
     // AI 장르가 있는 파일 수 (이미 분석된 파일이 있는지 확인용)
     FileEntity findFirstByNormalizedTitleAndAiGenreIsNotNullAndIdNot(
