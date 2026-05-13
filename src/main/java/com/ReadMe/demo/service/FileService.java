@@ -123,7 +123,7 @@ public class FileService {
                     : Sort.Order.desc("rating");
             sortObj = Sort.by(ratingOrder, Sort.Order.desc("date"));
         } else {
-            sortObj = Sort.by(direction, property);
+             sortObj = Sort.by(direction, property);
         }
 
         Pageable pageable = PageRequest.of(page, size, sortObj);
