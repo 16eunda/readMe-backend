@@ -109,6 +109,8 @@ public class FileController {
 
         if (authentication != null && authentication.isAuthenticated()) {
             Long userId = ((CustomUserDetails) authentication.getPrincipal()).getUserId();
+            System.out.println("📁 최근 파일 조회 - userId: " + userId);
+            System.out.println(fileService.getRecentFilesByUserId(userId));
             return fileService.getRecentFilesByUserId(userId);
         } else if (deviceId != null && !deviceId.isEmpty()) {
             return fileService.getRecentFilesByDeviceId(deviceId);
