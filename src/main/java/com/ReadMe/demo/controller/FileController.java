@@ -102,7 +102,7 @@ public class FileController {
 
     // 히스토리 조회 (프론트에서 사용)
     @GetMapping("/history")
-    public List<FileEntity> getRecentFiles(
+    public List<FileDto> getRecentFiles(
             @RequestHeader(value = "X-Device-Id", required = false) String deviceId,
             Authentication authentication
     ) {
@@ -110,7 +110,7 @@ public class FileController {
         if (authentication != null && authentication.isAuthenticated()) {
             Long userId = ((CustomUserDetails) authentication.getPrincipal()).getUserId();
             System.out.println("📁 최근 파일 조회 - userId: " + userId);
-            List<FileEntity> recentFiles = null;
+            List<FileDto> recentFiles = null;
             try {
                 recentFiles = fileService.getRecentFilesByUserId(userId);
                 System.out.println("✅ 최근 파일 조회 성공 - " + recentFiles.size() + "개 파일 반환");
@@ -123,7 +123,7 @@ public class FileController {
         } else if (deviceId != null && !deviceId.isEmpty()) {
             try {
                 System.out.println("📁 최근 파일 조회 - deviceId: " + deviceId);
-                List<FileEntity> recentFiles = fileService.getRecentFilesByDeviceId(deviceId);
+                List<FileDto> recentFiles = fileService.getRecentFilesByDeviceId(deviceId);
                 System.out.println("✅ 최근 파일 조회 성공 - " + recentFiles.size() + "개 파일 반환");
                 return recentFiles;
             } catch (Exception e) {

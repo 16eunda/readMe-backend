@@ -130,13 +130,25 @@ public class FileService {
 
         // userId가 있으면 userId로 조회 (로그인 상태)
         if (userId != null && !userId.isEmpty()) {
-            return fileRepository.findByPathAndUserId(path, userId, pageable).map(FileDto::from);
+            try {
+                return fileRepository.findByPathAndUserId(path, userId, pageable).map(FileDto::from);
+            } catch (Exception e) {
+                System.out.println("파일 조회 실패: " + e.getMessage());
+            }
         } else {
-            // userId 없으면 deviceId로 조회 (게스트 상태)
-            return fileRepository.findByPathAndDeviceIdAndUserIsNull(
-                    path, deviceId, pageable
-            ).map(FileDto::from);
+            try {
+                // userId 없으면 deviceId로 조회 (게스트 상태)
+                return fileRepository.findByPathAndDeviceIdAndUserIsNull(
+                        path, deviceId, pageable
+                ).map(FileDto::from);
+
+            } catch (Exception e) {
+                System.out.println("파일 조회 실패: " + e.getMessage());
+            }
+
         }
+
+        return Page.empty(pageable);
     }
 
     // 파일 검색
@@ -294,15 +306,17 @@ public class FileService {
     }
 
     // 최근 읽은 파일 조회 (히스토리)
-    public List<FileEntity> getRecentFilesByUserId(Long userId) {
+    public List<FileDto> getRecentFilesByUserId(Long userId) {
         return fileRepository
-                .findTop50ByUserIdAndLastReadAtIsNotNullOrderByLastReadAtDesc(userId);
+                .findTop50ByUserIdAndLastReadAtIsNotNullOrderByLastReadAtDesc(userId)
+                .stream().map(FileDto::from).toList();
     }
 
     // 최근 읽은 파일 조회 (히스토리, 게스트용)
-    public List<FileEntity> getRecentFilesByDeviceId(String deviceId) {
+    public List<FileDto> getRecentFilesByDeviceId(String deviceId) {
         return fileRepository
-                .findTop50ByDeviceIdAndUserIsNullAndLastReadAtIsNotNullOrderByLastReadAtDesc(deviceId);
+                .findTop50ByDeviceIdAndUserIsNullAndLastReadAtIsNotNullOrderByLastReadAtDesc(deviceId)
+                .stream().map(FileDto::from).toList();
     }
 
 
