@@ -18,16 +18,29 @@ public interface FileRepository extends JpaRepository<FileEntity, Long> {
     // 파일 경로로 조회
     Page<FileEntity> findByPath(String path, Pageable pageable);
 
-    // 추가: deviceId로 필터링 (게스트용)
-    Page<FileEntity> findByPathAndDeviceIdAndUserIsNull(
-            String path,
-            String deviceId,
+    // 게스트용 - @Lob 제외하고 필요한 컬럼만 조회
+    @Query("""
+        SELECT new com.ReadMe.demo.dto.FileDto(
+            f.id, f.title, f.preview, f.date, f.rating, f.uri, f.path, f.review
+        )
+        FROM FileEntity f
+        WHERE f.path = :path AND f.deviceId = :deviceId AND f.user IS NULL
+    """)
+    Page<FileDto> findByPathAndDeviceIdAndUserIsNull(
+            @Param("path") String path,
+            @Param("deviceId") String deviceId,
             Pageable pageable
     );
 
-    // 추가: userId로 필터링 (로그인용 - 모든 기기 파일)
-    @Query("SELECT f FROM FileEntity f WHERE f.path = :path AND f.user.id = :userId")
-    Page<FileEntity> findByPathAndUserId(
+    // 로그인용 - @Lob 제외하고 필요한 컬럼만 조회
+    @Query("""
+        SELECT new com.ReadMe.demo.dto.FileDto(
+            f.id, f.title, f.preview, f.date, f.rating, f.uri, f.path, f.review
+        )
+        FROM FileEntity f
+        WHERE f.path = :path AND f.user.id = :userId
+    """)
+    Page<FileDto> findByPathAndUserId(
             @Param("path") String path,
             @Param("userId") String userId,
             Pageable pageable

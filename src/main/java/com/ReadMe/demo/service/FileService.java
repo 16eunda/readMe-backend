@@ -131,17 +131,13 @@ public class FileService {
         // userId가 있으면 userId로 조회 (로그인 상태)
         if (userId != null && !userId.isEmpty()) {
             try {
-                return fileRepository.findByPathAndUserId(path, userId, pageable).map(FileDto::from);
+                return fileRepository.findByPathAndUserId(path, userId, pageable);
             } catch (Exception e) {
                 System.out.println("파일 조회 실패: " + e.getMessage());
             }
         } else {
             try {
-                // userId 없으면 deviceId로 조회 (게스트 상태)
-                return fileRepository.findByPathAndDeviceIdAndUserIsNull(
-                        path, deviceId, pageable
-                ).map(FileDto::from);
-
+                return fileRepository.findByPathAndDeviceIdAndUserIsNull(path, deviceId, pageable);
             } catch (Exception e) {
                 System.out.println("파일 조회 실패: " + e.getMessage());
             }
