@@ -110,10 +110,26 @@ public class FileController {
         if (authentication != null && authentication.isAuthenticated()) {
             Long userId = ((CustomUserDetails) authentication.getPrincipal()).getUserId();
             System.out.println("📁 최근 파일 조회 - userId: " + userId);
-            System.out.println(fileService.getRecentFilesByUserId(userId));
-            return fileService.getRecentFilesByUserId(userId);
+            List<FileEntity> recentFiles = null;
+            try {
+                recentFiles = fileService.getRecentFilesByUserId(userId);
+                System.out.println("✅ 최근 파일 조회 성공 - " + recentFiles.size() + "개 파일 반환");
+                return recentFiles;
+            } catch (Exception e) {
+                System.out.println("❌ 최근 파일 조회 실패: " + e.getMessage());
+                return List.of(); // 빈 리스트 반환
+            }
+
         } else if (deviceId != null && !deviceId.isEmpty()) {
-            return fileService.getRecentFilesByDeviceId(deviceId);
+            try {
+                System.out.println("📁 최근 파일 조회 - deviceId: " + deviceId);
+                List<FileEntity> recentFiles = fileService.getRecentFilesByDeviceId(deviceId);
+                System.out.println("✅ 최근 파일 조회 성공 - " + recentFiles.size() + "개 파일 반환");
+                return recentFiles;
+            } catch (Exception e) {
+                System.out.println("❌ 최근 파일 조회 실패: " + e.getMessage());
+                return List.of(); // 빈 리스트 반환
+            }
         } else {
             return List.of(); // 빈 리스트 반환
         }
