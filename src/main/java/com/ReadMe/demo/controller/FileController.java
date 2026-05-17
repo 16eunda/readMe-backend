@@ -1,10 +1,9 @@
 package com.ReadMe.demo.controller;
 
-import com.ReadMe.demo.domain.FileEntity;
-import com.ReadMe.demo.domain.UserEntity;
 import com.ReadMe.demo.dto.FileDeleteRequest;
 import com.ReadMe.demo.exception.UnauthorizedException;
 import com.ReadMe.demo.service.FileService;
+import com.ReadMe.demo.domain.FileEntity;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.Authentication;
 import org.springframework.data.domain.Page;
@@ -13,10 +12,8 @@ import org.springframework.web.bind.annotation.*;
 import com.ReadMe.demo.dto.FileDto;
 import com.ReadMe.demo.dto.AiInfoResponse;
 import com.ReadMe.demo.security.CustomUserDetails;
-import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
-import java.util.Random;
 
 @RestController
 @RequiredArgsConstructor
@@ -27,12 +24,12 @@ public class FileController {
 
     // 파일 저장
     @PostMapping
-    public FileEntity saveFile(
+    public FileDto saveFile(
             @RequestBody FileEntity file,
             @RequestHeader(value = "X-Device-Id", required = false) String deviceId,
             Authentication authentication
     ) {
-        return fileService.saveFile(file, deviceId, authentication);
+        return FileDto.from(fileService.saveFile(file, deviceId, authentication));
     }
 
     // 파일조회
@@ -78,11 +75,11 @@ public class FileController {
 
     // 파일 정보 업데이트 (제목, 리뷰, 별점)
     @PatchMapping("/{id}")
-    public FileEntity updateFile(
+    public FileDto updateFile(
             @PathVariable Long id,
             @RequestBody Map<String, Object> body
     ) {
-        return fileService.updateFile(id, body);
+        return FileDto.from(fileService.updateFile(id, body));
     }
 
     // 파일삭제 (여러개 삭제 지원)
@@ -93,11 +90,10 @@ public class FileController {
         fileService.deleteFiles(request.getIds(), deviceId, authentication);
     }
 
-    // FileController.java
-    // 파일 ID로 조회 (추가!)
+    // 파일 ID로 조회
     @GetMapping("/{id}")
-    public FileEntity getFile(@PathVariable Long id) {
-        return fileService.getFileById(id);
+    public FileDto getFile(@PathVariable Long id) {
+        return FileDto.from(fileService.getFileById(id));
     }
 
     // 히스토리 조회 (프론트에서 사용)
@@ -137,13 +133,13 @@ public class FileController {
 
     // 파일 프로그래스 저장 (이어읽기 저장)
     @PatchMapping("/{id}/progress")
-    public FileEntity updateProgress(
+    public FileDto updateProgress(
             @PathVariable Long id,
             @RequestBody Map<String, Object> body,
             @RequestHeader(value = "X-Device-Id", required = false) String deviceId,
             Authentication authentication
     ) {
-       return fileService.updateProgress(id, body, deviceId, authentication);
+        return FileDto.from(fileService.updateProgress(id, body, deviceId, authentication));
     }
 
     // 파일 중복 체크

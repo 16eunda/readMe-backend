@@ -28,10 +28,10 @@ public class AnalysisService {
     /**
      * 큐에서 호출되는 분석 메서드
      * - 프리미엄 체크
-     * - 일일 제한 체크
+     * - 일일 제한 체크 (bypassLimit=true면 스킵 → getAiInfo 직접 요청용)
      * - 분석 실행 + 로그 기록
      */
-    public void analyze(Long fileId) {
+    public void analyze(Long fileId, boolean bypassLimit) {
         fileRepository.findById(fileId).ifPresent(file -> {
 
             // 이미 분석 완료된 경우 스킵
@@ -51,8 +51,8 @@ public class AnalysisService {
                 return;
             }
 
-            // 일일 제한 체크
-            if (!canAnalyzeToday(user, deviceId)) {
+            // 일일 제한 체크 (파일 추가 시 자동 분석에만 적용, getAiInfo 직접 요청은 제외)
+            if (!bypassLimit && !canAnalyzeToday(user, deviceId)) {
                 log.info("🚫 오늘 AI 분석 한도 초과 ({}/{}): {}",
                         DAILY_LIMIT, DAILY_LIMIT, file.getTitle());
                 file.setAnalysisStatus("LIMIT_EXCEEDED");
@@ -100,6 +100,11 @@ public class AnalysisService {
 
             fileRepository.save(file);
         });
+    }
+
+    // 기존 호환용 (워커에서 파일 추가 자동 분석 → 일일 제한 적용)
+    public void analyze(Long fileId) {
+        analyze(fileId, false);
     }
 
     /**

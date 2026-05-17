@@ -24,13 +24,21 @@ public class AnalysisWorker {
         new Thread(() -> {
             while (running) {
                 try {
-                    Long fileId = queueService.dequeue();
+                    // priority 큐 먼저 (getAiInfo 직접 요청 - 일일 제한 제외)
+                    Long priorityFileId = queueService.dequeuePriority();
+                    if (priorityFileId != null) {
+                        log.info("🎯 [Priority] 작업 가져옴: {}", priorityFileId);
+                        analysisService.analyze(priorityFileId, true); // bypassLimit=true
+                        continue;
+                    }
 
+                    // 일반 큐 (파일 추가 자동 분석 - 일일 제한 적용)
+                    Long fileId = queueService.dequeue();
                     if (fileId != null) {
                         log.info("🎯 작업 가져옴: {}", fileId);
-                        analysisService.analyze(fileId);
+                        analysisService.analyze(fileId, false); // bypassLimit=false
                     } else {
-                        // 큐가 비어있으면 5초 대기
+                        // 두 큐 모두 비어있으면 5초 대기
                         Thread.sleep(5000);
                     }
 

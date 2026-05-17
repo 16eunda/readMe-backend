@@ -10,6 +10,7 @@ import com.ReadMe.demo.repository.FileReadLogRepository;
 import com.ReadMe.demo.repository.FileRepository;
 import com.ReadMe.demo.security.CustomUserDetails;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.java.Log;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -22,6 +23,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.logging.Logger;
 
 @Service
 @RequiredArgsConstructor
@@ -168,6 +170,8 @@ public class FileService {
 
 
         if (user != null) {
+
+            System.out.println("🔍 검색 - 로그인 상태, userId: " + user.getId() + ", keyword: " + keyword);
             // 로그인 상태: userId로 검색
             return fileRepository.findByUserAndTitleContainingIgnoreCase(user, keyword, pageable)
                     .map(FileDto::from);
@@ -176,7 +180,7 @@ public class FileService {
             return fileRepository.findByDeviceIdAndUserIsNullAndTitleContainingIgnoreCase(deviceId, keyword, pageable)
                     .map(FileDto::from);
         }
-
+        System.out.println("검색 - 인증 정보 없음, 검색 실패");
         return Page.empty(pageable);
     }
 
@@ -349,12 +353,12 @@ public class FileService {
             user = ((CustomUserDetails) authentication.getPrincipal()).getUser();
         }
 
-        // 프리미엄이면 큐에 넣고 "분석 중" 상태 반환, 비프리미엄이면 "프리미엄 필요" 상태 반환
+        // 프리미엄이면 priority 큐에 넣고 "분석 중" 상태 반환 (일일 제한 제외)
         if (subscriptionService.isPremium(user, deviceId)) {
             if (!"QUEUED".equals(file.getAnalysisStatus()) && !"PROCESSING".equals(file.getAnalysisStatus())) {
                 file.setAnalysisStatus("QUEUED");
                 fileRepository.save(file);
-                queueService.enqueue(file.getId());
+                queueService.enqueuePriority(file.getId()); // 일일 제한 제외 큐
             }
             return AiInfoResponse.analyzing(); // "분석 중" 상태 반환
         }
