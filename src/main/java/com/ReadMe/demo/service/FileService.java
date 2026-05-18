@@ -173,12 +173,10 @@ public class FileService {
 
             System.out.println("🔍 검색 - 로그인 상태, userId: " + user.getId() + ", keyword: " + keyword);
             // 로그인 상태: userId로 검색
-            return fileRepository.findByUserAndTitleContainingIgnoreCase(user, keyword, pageable)
-                    .map(FileDto::from);
+            return fileRepository.findByUserAndTitleContainingIgnoreCase(user, keyword, pageable);
         } else if (deviceId != null && !deviceId.isEmpty()) {
             // 게스트 상태: deviceId로 검색
-            return fileRepository.findByDeviceIdAndUserIsNullAndTitleContainingIgnoreCase(deviceId, keyword, pageable)
-                    .map(FileDto::from);
+            return fileRepository.findByDeviceIdAndUserIsNullAndTitleContainingIgnoreCase(deviceId, keyword, pageable);
         }
         System.out.println("검색 - 인증 정보 없음, 검색 실패");
         return Page.empty(pageable);

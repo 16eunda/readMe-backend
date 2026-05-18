@@ -59,11 +59,25 @@ public interface FileRepository extends JpaRepository<FileEntity, Long> {
     List<FileEntity> findTop50ByLastReadAtIsNotNullOrderByLastReadAtDesc();
 
     // 검색 메서드 추가
-    Page<FileEntity> findByUserAndTitleContainingIgnoreCase(
+    @Query("""
+        SELECT new com.ReadMe.demo.dto.FileDto(
+            f.id, f.title, f.preview, f.date, f.rating, f.uri, f.path, f.review
+        )
+        FROM FileEntity f
+        WHERE f.user.id = :userId AND LOWER(f.title) LIKE LOWER(CONCAT('%', :keyword, '%'))
+    """)
+    Page<FileDto> findByUserAndTitleContainingIgnoreCase(
             UserEntity user, String keyword, Pageable pageable
     );
 
-    Page<FileEntity> findByDeviceIdAndUserIsNullAndTitleContainingIgnoreCase(
+    @Query("""
+        SELECT new com.ReadMe.demo.dto.FileDto(
+            f.id, f.title, f.preview, f.date, f.rating, f.uri, f.path, f.review
+        )
+        FROM FileEntity f
+        WHERE f.deviceId = :deviceId AND f.user IS NULL AND LOWER(f.title) LIKE LOWER(CONCAT('%', :keyword, '%'))
+    """)
+    Page<FileDto> findByDeviceIdAndUserIsNullAndTitleContainingIgnoreCase(
             String deviceId, String keyword, Pageable pageable
     );
 
