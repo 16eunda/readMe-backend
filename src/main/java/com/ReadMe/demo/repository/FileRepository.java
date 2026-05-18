@@ -66,8 +66,8 @@ public interface FileRepository extends JpaRepository<FileEntity, Long> {
         FROM FileEntity f
         WHERE f.user.id = :userId AND LOWER(f.title) LIKE LOWER(CONCAT('%', :keyword, '%'))
     """)
-    Page<FileDto> findByUserAndTitleContainingIgnoreCase(
-            UserEntity user, String keyword, Pageable pageable
+    Page<FileDto> findByUserIdAndTitleContainingIgnoreCase(
+            @Param("userId") Long userId, @Param("keyword") String keyword, Pageable pageable
     );
 
     @Query("""
@@ -78,7 +78,7 @@ public interface FileRepository extends JpaRepository<FileEntity, Long> {
         WHERE f.deviceId = :deviceId AND f.user IS NULL AND LOWER(f.title) LIKE LOWER(CONCAT('%', :keyword, '%'))
     """)
     Page<FileDto> findByDeviceIdAndUserIsNullAndTitleContainingIgnoreCase(
-            String deviceId, String keyword, Pageable pageable
+            @Param("deviceId") String deviceId, @Param("keyword") String keyword, Pageable pageable
     );
 
     // ===== 통계용 메서드 (userId 필터링) =====

@@ -170,12 +170,9 @@ public class FileService {
 
 
         if (user != null) {
-
             System.out.println("🔍 검색 - 로그인 상태, userId: " + user.getId() + ", keyword: " + keyword);
-            // 로그인 상태: userId로 검색
-            return fileRepository.findByUserAndTitleContainingIgnoreCase(user, keyword, pageable);
+            return fileRepository.findByUserIdAndTitleContainingIgnoreCase(user.getId(), keyword, pageable);
         } else if (deviceId != null && !deviceId.isEmpty()) {
-            // 게스트 상태: deviceId로 검색
             return fileRepository.findByDeviceIdAndUserIsNullAndTitleContainingIgnoreCase(deviceId, keyword, pageable);
         }
         System.out.println("검색 - 인증 정보 없음, 검색 실패");
@@ -315,7 +312,7 @@ public class FileService {
 
 
     // AI 분석 정보 전체 조회 (장르, 키워드, 분위기, 요약, 타겟)
-    // 분석 완료면 바로 반환, 미분석이면 큐에 넣고 상태 반환
+    // 사용자가 직접 요청한 경우 → 동기 처리 (바로 결과 반환)
     public AiInfoResponse getAiInfo(Long fileId, String deviceId, Authentication authentication) {
         FileEntity file = fileRepository.findById(fileId)
                 .orElseThrow(() -> new RuntimeException("파일을 찾을 수 없습니다: " + fileId));
@@ -325,7 +322,7 @@ public class FileService {
             return AiInfoResponse.from(file);
         }
 
-        // 같은 제목의 이미 분석된 파일 있으면 복사 (API 호출 없음)
+        // 같은 제목의 이미 분석된 파일 있으면 복사 (API 호출 없음, 즉시 반환)
         FileEntity existing = fileRepository
                 .findFirstByNormalizedTitleAndAiGenreIsNotNullAndIdNot(
                         file.getNormalizedTitle(), file.getId());
@@ -342,26 +339,40 @@ public class FileService {
             return AiInfoResponse.from(file);
         }
 
-        // 미분석 → 프리미엄이면 큐에 넣기
+        // 프리미엄 체크
         UserEntity user = null;
-
-        // 로그인 상태면 userId로, 게스트면 deviceId로 프리미엄 여부 판단
         if (authentication != null && authentication.isAuthenticated()
                 && authentication.getPrincipal() instanceof CustomUserDetails) {
             user = ((CustomUserDetails) authentication.getPrincipal()).getUser();
         }
 
-        // 프리미엄이면 priority 큐에 넣고 "분석 중" 상태 반환 (일일 제한 제외)
-        if (subscriptionService.isPremium(user, deviceId)) {
-            if (!"QUEUED".equals(file.getAnalysisStatus()) && !"PROCESSING".equals(file.getAnalysisStatus())) {
-                file.setAnalysisStatus("QUEUED");
-                fileRepository.save(file);
-                queueService.enqueuePriority(file.getId()); // 일일 제한 제외 큐
-            }
-            return AiInfoResponse.analyzing(); // "분석 중" 상태 반환
+        if (!subscriptionService.isPremium(user, deviceId)) {
+            return AiInfoResponse.notAvailable();
         }
 
-        // 비프리미엄
-        return AiInfoResponse.notAvailable(); // "프리미엄 필요" 상태 반환
+        // 프리미엄 → Gemini 직접 호출 (동기, 일일 제한 없음)
+        try {
+            file.setAnalysisStatus("PROCESSING");
+            fileRepository.save(file);
+
+            Map<String, String> analysis = geminiService.analyzeText(file.getPreview(), file.getTitle());
+
+            file.setAiGenre(analysis.get("genre"));
+            file.setAiKeywords(analysis.get("keywords"));
+            file.setAiMood(analysis.get("mood"));
+            file.setAiContent(analysis.get("info"));
+            file.setAiSummary(analysis.get("summary"));
+            file.setAiTarget(analysis.get("target"));
+            file.setAiAnalyzedAt(LocalDateTime.now());
+            file.setAnalysisStatus("DONE");
+            fileRepository.save(file);
+
+            return AiInfoResponse.from(file);
+
+        } catch (Exception e) {
+            file.setAnalysisStatus("FAILED");
+            fileRepository.save(file);
+            throw new RuntimeException("AI 분석 실패: " + e.getMessage());
+        }
     }
 }
