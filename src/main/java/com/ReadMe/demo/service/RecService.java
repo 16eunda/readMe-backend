@@ -7,6 +7,7 @@ import com.ReadMe.demo.repository.FileRepository;
 import com.ReadMe.demo.repository.RecRepository;
 import com.ReadMe.demo.security.CustomUserDetails;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 import lombok.extern.slf4j.Slf4j;
@@ -219,7 +220,7 @@ public class RecService {
 
         if (userId != null) {
             recentFiles = fileRepository
-                    .findTop10ByUserIdAndLastReadAtIsNotNullOrderByLastReadAtDesc(userId);
+                    .findTop10ByUserIdAndLastReadAtIsNotNullOrderByLastReadAtDesc(userId, PageRequest.of(0, 10));
         } else {
             recentFiles = fileRepository
                     .findTop10ByDeviceIdAndUserIsNullAndLastReadAtIsNotNullOrderByLastReadAtDesc(deviceId);
@@ -288,7 +289,7 @@ public class RecService {
 
         if (userId != null) {
             recentFiles = fileRepository
-                    .findTop10ByUserIdAndLastReadAtIsNotNullOrderByLastReadAtDesc(userId);
+                    .findTop10ByUserIdAndLastReadAtIsNotNullOrderByLastReadAtDesc(userId, PageRequest.of(0, 10));
         } else {
             recentFiles = fileRepository
                     .findTop10ByDeviceIdAndUserIsNullAndLastReadAtIsNotNullOrderByLastReadAtDesc(deviceId);

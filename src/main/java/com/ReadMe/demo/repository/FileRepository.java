@@ -21,7 +21,7 @@ public interface FileRepository extends JpaRepository<FileEntity, Long> {
     // 게스트용 - @Lob 제외하고 필요한 컬럼만 조회
     @Query("""
         SELECT new com.ReadMe.demo.dto.FileDto(
-            f.id, f.title, f.preview, f.date, f.rating, f.uri, f.path, f.review
+            f.id, f.title, f.preview, f.date, f.rating, f.uri, f.path, f.review, f.progress, f.epubCfi
         )
         FROM FileEntity f
         WHERE f.path = :path AND f.deviceId = :deviceId AND f.user IS NULL
@@ -35,7 +35,7 @@ public interface FileRepository extends JpaRepository<FileEntity, Long> {
     // 로그인용 - @Lob 제외하고 필요한 컬럼만 조회
     @Query("""
         SELECT new com.ReadMe.demo.dto.FileDto(
-            f.id, f.title, f.preview, f.date, f.rating, f.uri, f.path, f.review
+            f.id, f.title, f.preview, f.date, f.rating, f.uri, f.path, f.review, f.progress, f.epubCfi
         )
         FROM FileEntity f
         WHERE f.path = :path AND f.user.id = :userId
@@ -61,7 +61,7 @@ public interface FileRepository extends JpaRepository<FileEntity, Long> {
     // 검색 메서드 추가
     @Query("""
         SELECT new com.ReadMe.demo.dto.FileDto(
-            f.id, f.title, f.preview, f.date, f.rating, f.uri, f.path, f.review
+            f.id, f.title, f.preview, f.date, f.rating, f.uri, f.path, f.review, f.progress, f.epubCfi
         )
         FROM FileEntity f
         WHERE f.user.id = :userId AND LOWER(f.title) LIKE LOWER(CONCAT('%', :keyword, '%'))
@@ -72,7 +72,7 @@ public interface FileRepository extends JpaRepository<FileEntity, Long> {
 
     @Query("""
         SELECT new com.ReadMe.demo.dto.FileDto(
-            f.id, f.title, f.preview, f.date, f.rating, f.uri, f.path, f.review
+            f.id, f.title, f.preview, f.date, f.rating, f.uri, f.path, f.review, f.progress, f.epubCfi
         )
         FROM FileEntity f
         WHERE f.deviceId = :deviceId AND f.user IS NULL AND LOWER(f.title) LIKE LOWER(CONCAT('%', :keyword, '%'))
@@ -124,25 +124,23 @@ public interface FileRepository extends JpaRepository<FileEntity, Long> {
 
     @Query("""
         SELECT new com.ReadMe.demo.dto.FileDto(
-            f.id, f.title, f.preview, f.date, f.rating, f.uri, f.path, f.review
+            f.id, f.title, f.preview, f.date, f.rating, f.uri, f.path, f.review, f.progress, f.epubCfi
         )
         FROM FileEntity f
         WHERE f.user.id = :userId AND f.lastReadAt IS NOT NULL
         ORDER BY f.lastReadAt DESC
-        LIMIT 50
     """)
-    List<FileDto> findRecentFileDtosByUserId(@Param("userId") Long userId);
+    List<FileDto> findRecentFileDtosByUserId(@Param("userId") Long userId, Pageable pageable);
 
     @Query("""
         SELECT new com.ReadMe.demo.dto.FileDto(
-            f.id, f.title, f.preview, f.date, f.rating, f.uri, f.path, f.review
+            f.id, f.title, f.preview, f.date, f.rating, f.uri, f.path, f.review, f.progress, f.epubCfi
         )
         FROM FileEntity f
         WHERE f.deviceId = :deviceId AND f.user IS NULL AND f.lastReadAt IS NOT NULL
         ORDER BY f.lastReadAt DESC
-        LIMIT 50
     """)
-    List<FileDto> findRecentFileDtosByDeviceId(@Param("deviceId") String deviceId);
+    List<FileDto> findRecentFileDtosByDeviceId(@Param("deviceId") String deviceId, Pageable pageable);
 
     // AI 장르가 있는 파일 수 (이미 분석된 파일이 있는지 확인용)
     FileEntity findFirstByNormalizedTitleAndAiGenreIsNotNullAndIdNot(
@@ -178,62 +176,57 @@ public interface FileRepository extends JpaRepository<FileEntity, Long> {
 
     // ===== 미분석 파일 조회 (추천 시 lazy 분석용) =====
 
-    // userId별 미분석 파일 (aiGenre가 null이고 analysisStatus가 DONE이 아닌 파일)
+    // userId별 미분석 파일
     @Query("""
-        SELECT f FROM FileEntity f 
-        WHERE f.user.id = :userId 
+        SELECT f FROM FileEntity f
+        WHERE f.user.id = :userId
         AND (f.aiGenre IS NULL OR f.analysisStatus = 'PENDING' OR f.analysisStatus = 'FAILED')
         AND f.analysisStatus != 'SKIPPED'
-        ORDER BY f.lastReadAt DESC NULLS LAST
+        ORDER BY f.lastReadAt DESC
     """)
     List<FileEntity> findUnanalyzedFilesByUserId(@Param("userId") Long userId);
 
     // deviceId별 미분석 파일 (게스트)
     @Query("""
-        SELECT f FROM FileEntity f 
-        WHERE f.deviceId = :deviceId AND f.user IS NULL 
+        SELECT f FROM FileEntity f
+        WHERE f.deviceId = :deviceId AND f.user IS NULL
         AND (f.aiGenre IS NULL OR f.analysisStatus = 'PENDING' OR f.analysisStatus = 'FAILED')
         AND f.analysisStatus != 'SKIPPED'
-        ORDER BY f.lastReadAt DESC NULLS LAST
+        ORDER BY f.lastReadAt DESC
     """)
     List<FileEntity> findUnanalyzedFilesByDeviceId(@Param("deviceId") String deviceId);
 
-    @Query("SELECT f FROM FileEntity f WHERE f.user.id = :userId AND f.lastReadAt IS NOT NULL ORDER BY f.lastReadAt DESC LIMIT 10")
-    List<FileEntity> findTop10ByUserIdAndLastReadAtIsNotNullOrderByLastReadAtDesc(@Param("userId") Long userId);
+    @Query("SELECT f FROM FileEntity f WHERE f.user.id = :userId AND f.lastReadAt IS NOT NULL ORDER BY f.lastReadAt DESC")
+    List<FileEntity> findTop10ByUserIdAndLastReadAtIsNotNullOrderByLastReadAtDesc(@Param("userId") Long userId, Pageable pageable);
 
     List<FileEntity> findTop10ByDeviceIdAndUserIsNullAndLastReadAtIsNotNullOrderByLastReadAtDesc(String deviceId);
 
     // ===== 폴백용: 오래 전에 읽은 파일 재추천 =====
 
-    // 가장 오래 전에 읽은 파일 (다시 읽어볼 만한 파일 추천)
     @Query("SELECT f FROM FileEntity f WHERE f.user.id = :userId AND f.lastReadAt IS NOT NULL ORDER BY f.lastReadAt ASC")
     List<FileEntity> findOldestReadFilesByUserId(@Param("userId") Long userId);
 
-    // 게스트용
     @Query("SELECT f FROM FileEntity f WHERE f.deviceId = :deviceId AND f.user IS NULL AND f.lastReadAt IS NOT NULL ORDER BY f.lastReadAt ASC")
     List<FileEntity> findOldestReadFilesByDeviceId(@Param("deviceId") String deviceId);
 
     // ===== 추천 품질 판단용 =====
 
-    // 분석 완료된 파일 수
     @Query("SELECT COUNT(f) FROM FileEntity f WHERE f.user.id = :userId AND f.analysisStatus = 'DONE'")
     long countAnalyzedByUserId(@Param("userId") Long userId);
 
     @Query("SELECT COUNT(f) FROM FileEntity f WHERE f.deviceId = :deviceId AND f.user IS NULL AND f.analysisStatus = 'DONE'")
     long countAnalyzedByDeviceId(@Param("deviceId") String deviceId);
 
-    // 전체 파일 수 (userId)
     @Query("SELECT COUNT(f) FROM FileEntity f WHERE f.user.id = :userId")
     long countAllByUserId(@Param("userId") Long userId);
 
-    // 전체 파일 수 (deviceId)
     @Query("SELECT COUNT(f) FROM FileEntity f WHERE f.deviceId = :deviceId AND f.user IS NULL")
     long countAllByDeviceId(@Param("deviceId") String deviceId);
 
-    // 안 읽은 파일 랜덤 추천 (분석 여부 상관없이)
-    @Query("SELECT f FROM FileEntity f WHERE f.user.id = :userId AND f.lastReadAt IS NULL ORDER BY FUNCTION('RAND')")
+    // 안 읽은 파일 랜덤 추천 - PostgreSQL RANDOM()
+    @Query(value = "SELECT * FROM file_entity f WHERE f.user_id = :userId AND f.last_read_at IS NULL ORDER BY RANDOM()", nativeQuery = true)
     List<FileEntity> findUnreadRandomByUserId(@Param("userId") Long userId);
 
-    @Query("SELECT f FROM FileEntity f WHERE f.deviceId = :deviceId AND f.user IS NULL AND f.lastReadAt IS NULL ORDER BY FUNCTION('RAND')")
+    @Query(value = "SELECT * FROM file_entity f WHERE f.device_id = :deviceId AND f.user_id IS NULL AND f.last_read_at IS NULL ORDER BY RANDOM()", nativeQuery = true)
     List<FileEntity> findUnreadRandomByDeviceId(@Param("deviceId") String deviceId);
 }
