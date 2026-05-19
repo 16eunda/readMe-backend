@@ -129,8 +129,9 @@ public interface FileRepository extends JpaRepository<FileEntity, Long> {
         FROM FileEntity f
         WHERE f.user.id = :userId AND f.lastReadAt IS NOT NULL
         ORDER BY f.lastReadAt DESC
+        LIMIT 50
     """)
-    List<FileDto> findRecentFileDtosByUserId(@Param("userId") Long userId, Pageable pageable);
+    List<FileDto> findRecentFileDtosByUserId(@Param("userId") Long userId);
 
     @Query("""
         SELECT new com.ReadMe.demo.dto.FileDto(
@@ -139,8 +140,9 @@ public interface FileRepository extends JpaRepository<FileEntity, Long> {
         FROM FileEntity f
         WHERE f.deviceId = :deviceId AND f.user IS NULL AND f.lastReadAt IS NOT NULL
         ORDER BY f.lastReadAt DESC
+        LIMIT 50
     """)
-    List<FileDto> findRecentFileDtosByDeviceId(@Param("deviceId") String deviceId, Pageable pageable);
+    List<FileDto> findRecentFileDtosByDeviceId(@Param("deviceId") String deviceId);
 
     // AI 장르가 있는 파일 수 (이미 분석된 파일이 있는지 확인용)
     FileEntity findFirstByNormalizedTitleAndAiGenreIsNotNullAndIdNot(
@@ -176,28 +178,28 @@ public interface FileRepository extends JpaRepository<FileEntity, Long> {
 
     // ===== 미분석 파일 조회 (추천 시 lazy 분석용) =====
 
-    // userId별 미분석 파일
+    // userId별 미분석 파일 (aiGenre가 null이고 analysisStatus가 DONE이 아닌 파일)
     @Query("""
-        SELECT f FROM FileEntity f
-        WHERE f.user.id = :userId
+        SELECT f FROM FileEntity f 
+        WHERE f.user.id = :userId 
         AND (f.aiGenre IS NULL OR f.analysisStatus = 'PENDING' OR f.analysisStatus = 'FAILED')
         AND f.analysisStatus != 'SKIPPED'
-        ORDER BY f.lastReadAt DESC
+        ORDER BY f.lastReadAt DESC NULLS LAST
     """)
     List<FileEntity> findUnanalyzedFilesByUserId(@Param("userId") Long userId);
 
     // deviceId별 미분석 파일 (게스트)
     @Query("""
-        SELECT f FROM FileEntity f
-        WHERE f.deviceId = :deviceId AND f.user IS NULL
+        SELECT f FROM FileEntity f 
+        WHERE f.deviceId = :deviceId AND f.user IS NULL 
         AND (f.aiGenre IS NULL OR f.analysisStatus = 'PENDING' OR f.analysisStatus = 'FAILED')
         AND f.analysisStatus != 'SKIPPED'
-        ORDER BY f.lastReadAt DESC
+        ORDER BY f.lastReadAt DESC NULLS LAST
     """)
     List<FileEntity> findUnanalyzedFilesByDeviceId(@Param("deviceId") String deviceId);
 
-    @Query("SELECT f FROM FileEntity f WHERE f.user.id = :userId AND f.lastReadAt IS NOT NULL ORDER BY f.lastReadAt DESC")
-    List<FileEntity> findTop10ByUserIdAndLastReadAtIsNotNullOrderByLastReadAtDesc(@Param("userId") Long userId, Pageable pageable);
+    @Query("SELECT f FROM FileEntity f WHERE f.user.id = :userId AND f.lastReadAt IS NOT NULL ORDER BY f.lastReadAt DESC LIMIT 10")
+    List<FileEntity> findTop10ByUserIdAndLastReadAtIsNotNullOrderByLastReadAtDesc(@Param("userId") Long userId);
 
     List<FileEntity> findTop10ByDeviceIdAndUserIsNullAndLastReadAtIsNotNullOrderByLastReadAtDesc(String deviceId);
 
@@ -228,10 +230,10 @@ public interface FileRepository extends JpaRepository<FileEntity, Long> {
     @Query("SELECT COUNT(f) FROM FileEntity f WHERE f.deviceId = :deviceId AND f.user IS NULL")
     long countAllByDeviceId(@Param("deviceId") String deviceId);
 
-    // 안 읽은 파일 랜덤 추천 (분석 여부 상관없이) - PostgreSQL RANDOM()
-    @Query(value = "SELECT * FROM file_entity f WHERE f.user_id = :userId AND f.last_read_at IS NULL ORDER BY RANDOM()", nativeQuery = true)
+    // 안 읽은 파일 랜덤 추천 (분석 여부 상관없이)
+    @Query("SELECT f FROM FileEntity f WHERE f.user.id = :userId AND f.lastReadAt IS NULL ORDER BY FUNCTION('RAND')")
     List<FileEntity> findUnreadRandomByUserId(@Param("userId") Long userId);
 
-    @Query(value = "SELECT * FROM file_entity f WHERE f.device_id = :deviceId AND f.user_id IS NULL AND f.last_read_at IS NULL ORDER BY RANDOM()", nativeQuery = true)
+    @Query("SELECT f FROM FileEntity f WHERE f.deviceId = :deviceId AND f.user IS NULL AND f.lastReadAt IS NULL ORDER BY FUNCTION('RAND')")
     List<FileEntity> findUnreadRandomByDeviceId(@Param("deviceId") String deviceId);
 }
