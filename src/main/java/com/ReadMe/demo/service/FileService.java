@@ -302,12 +302,12 @@ public class FileService {
 
     // 최근 읽은 파일 조회 (히스토리)
     public List<FileDto> getRecentFilesByUserId(Long userId) {
-        return fileRepository.findRecentFileDtosByUserId(userId);
+        return fileRepository.findRecentFileDtosByUserId(userId, org.springframework.data.domain.PageRequest.of(0, 50));
     }
 
     // 최근 읽은 파일 조회 (히스토리, 게스트용)
     public List<FileDto> getRecentFilesByDeviceId(String deviceId) {
-        return fileRepository.findRecentFileDtosByDeviceId(deviceId);
+        return fileRepository.findRecentFileDtosByDeviceId(deviceId, org.springframework.data.domain.PageRequest.of(0, 50));
     }
 
 
