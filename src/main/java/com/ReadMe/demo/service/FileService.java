@@ -248,6 +248,10 @@ public class FileService {
             file.setEpubCfi((String) body.get("epubCfi"));
         }
 
+        if (body.containsKey("readingPreview")) {
+            file.setReadingPreview((String) body.get("readingPreview"));
+        }
+
         // 완독 여부 업데이트
         file.setCompleted(completed);
 

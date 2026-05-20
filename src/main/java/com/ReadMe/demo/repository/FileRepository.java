@@ -21,7 +21,7 @@ public interface FileRepository extends JpaRepository<FileEntity, Long> {
     // 게스트용 - @Lob 제외하고 필요한 컬럼만 조회
     @Query("""
         SELECT new com.ReadMe.demo.dto.FileDto(
-            f.id, f.title, f.preview, f.date, f.rating, f.uri, f.path, f.review, f.progress, f.epubCfi
+            f.id, f.title, f.preview, f.date, f.rating, f.uri, f.path, f.review, f.progress, f.epubCfi, f.readingPreview
         )
         FROM FileEntity f
         WHERE f.path = :path AND f.deviceId = :deviceId AND f.user IS NULL
@@ -35,7 +35,7 @@ public interface FileRepository extends JpaRepository<FileEntity, Long> {
     // 로그인용 - @Lob 제외하고 필요한 컬럼만 조회
     @Query("""
         SELECT new com.ReadMe.demo.dto.FileDto(
-            f.id, f.title, f.preview, f.date, f.rating, f.uri, f.path, f.review, f.progress, f.epubCfi
+            f.id, f.title, f.preview, f.date, f.rating, f.uri, f.path, f.review, f.progress, f.epubCfi, f.readingPreview
         )
         FROM FileEntity f
         WHERE f.path = :path AND f.user.id = :userId
@@ -61,7 +61,7 @@ public interface FileRepository extends JpaRepository<FileEntity, Long> {
     // 검색 메서드 추가
     @Query("""
         SELECT new com.ReadMe.demo.dto.FileDto(
-            f.id, f.title, f.preview, f.date, f.rating, f.uri, f.path, f.review, f.progress, f.epubCfi
+            f.id, f.title, f.preview, f.date, f.rating, f.uri, f.path, f.review, f.progress, f.epubCfi, f.readingPreview
         )
         FROM FileEntity f
         WHERE f.user.id = :userId AND LOWER(f.title) LIKE LOWER(CONCAT('%', :keyword, '%'))
@@ -72,7 +72,7 @@ public interface FileRepository extends JpaRepository<FileEntity, Long> {
 
     @Query("""
         SELECT new com.ReadMe.demo.dto.FileDto(
-            f.id, f.title, f.preview, f.date, f.rating, f.uri, f.path, f.review, f.progress, f.epubCfi
+            f.id, f.title, f.preview, f.date, f.rating, f.uri, f.path, f.review, f.progress, f.epubCfi, f.readingPreview
         )
         FROM FileEntity f
         WHERE f.deviceId = :deviceId AND f.user IS NULL AND LOWER(f.title) LIKE LOWER(CONCAT('%', :keyword, '%'))
@@ -124,7 +124,7 @@ public interface FileRepository extends JpaRepository<FileEntity, Long> {
 
     @Query("""
         SELECT new com.ReadMe.demo.dto.FileDto(
-            f.id, f.title, f.preview, f.date, f.rating, f.uri, f.path, f.review, f.progress, f.epubCfi
+            f.id, f.title, f.preview, f.date, f.rating, f.uri, f.path, f.review, f.progress, f.epubCfi, f.readingPreview
         )
         FROM FileEntity f
         WHERE f.user.id = :userId AND f.lastReadAt IS NOT NULL
@@ -134,7 +134,7 @@ public interface FileRepository extends JpaRepository<FileEntity, Long> {
 
     @Query("""
         SELECT new com.ReadMe.demo.dto.FileDto(
-            f.id, f.title, f.preview, f.date, f.rating, f.uri, f.path, f.review, f.progress, f.epubCfi
+            f.id, f.title, f.preview, f.date, f.rating, f.uri, f.path, f.review, f.progress, f.epubCfi, f.readingPreview
         )
         FROM FileEntity f
         WHERE f.deviceId = :deviceId AND f.user IS NULL AND f.lastReadAt IS NOT NULL

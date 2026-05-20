@@ -45,6 +45,8 @@ public class FileEntity {
     private String path;
     private String uri;
     private String preview; // 미리보기
+    @Column(columnDefinition = "TEXT")
+    private String readingPreview; // 읽는 중 미리보기 (txt: 현재 페이지 텍스트, epub: 현재 cfi 위치)
     private String review;
     private LocalDateTime date;
     private int rating;
