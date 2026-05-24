@@ -105,12 +105,12 @@ public class AiAnalysisService {
         }
 
         // 업데이트된 정보 저장
-        if (request.getAiGenre() != null) file.setAiGenre(request.getAiGenre());
-        if (request.getAiKeywords() != null) file.setAiKeywords(request.getAiKeywords());
-        if (request.getAiMood() != null) file.setAiMood(request.getAiMood());
-        if (request.getAiContent() != null) file.setAiContent(request.getAiContent());
-        if (request.getAiSummary() != null) file.setAiSummary(request.getAiSummary());
-        if (request.getAiTarget() != null) file.setAiTarget(request.getAiTarget());
+        if (request.getGenre() != null) file.setAiGenre(request.getGenre());
+        if (request.getKeywords() != null) file.setAiKeywords(request.getKeywords());
+        if (request.getMood() != null) file.setAiMood(request.getMood());
+        if (request.getContent() != null) file.setAiContent(request.getContent());
+        if (request.getSummary() != null) file.setAiSummary(request.getSummary());
+        if (request.getTarget() != null) file.setAiTarget(request.getTarget());
 
         // 수동 업데이트는 분석 상태를 변경하지 않음 (사용자가 직접 수정한 경우도 있으므로)
         fileRepository.save(file);

@@ -10,11 +10,12 @@ import lombok.Setter;
 @NoArgsConstructor
 @AllArgsConstructor
 public class UpdateFileAiInfoRequest {
-    private String aiGenre;
-    private String aiKeywords;
-    private String aiMood;
-    private String aiSummary;
-    private String aiTarget;
-    private String aiContent;
+    private String genre;
+    private String keywords;
+    private String mood;
+    private String content;
+    private String summary;
+    private String target;
+
 }
 
