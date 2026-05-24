@@ -106,7 +106,11 @@ public class AiAnalysisService {
 
         // 업데이트된 정보 저장
         if (request.getGenre() != null) file.setAiGenre(request.getGenre());
-        if (request.getKeywords() != null) file.setAiKeywords(request.getKeywords());
+
+        if (request.getKeywords() != null) {
+            file.setAiKeywords(String.join(", ", request.getKeywords()));
+        }
+
         if (request.getMood() != null) file.setAiMood(request.getMood());
         if (request.getContent() != null) file.setAiContent(request.getContent());
         if (request.getSummary() != null) file.setAiSummary(request.getSummary());
