@@ -229,4 +229,11 @@ public interface FileRepository extends JpaRepository<FileEntity, Long> {
 
     @Query(value = "SELECT * FROM file_entity f WHERE f.device_id = :deviceId AND f.user_id IS NULL AND f.last_read_at IS NULL ORDER BY RANDOM()", nativeQuery = true)
     List<FileEntity> findUnreadRandomByDeviceId(@Param("deviceId") String deviceId);
+
+    // 최후 폴백: 전체에서 랜덤 1권
+    @Query(value = "SELECT * FROM file_entity f WHERE f.user_id = :userId ORDER BY RANDOM() LIMIT 1", nativeQuery = true)
+    List<FileEntity> findAnyRandomByUserId(@Param("userId") Long userId);
+
+    @Query(value = "SELECT * FROM file_entity f WHERE f.device_id = :deviceId AND f.user_id IS NULL ORDER BY RANDOM() LIMIT 1", nativeQuery = true)
+    List<FileEntity> findAnyRandomByDeviceId(@Param("deviceId") String deviceId);
 }

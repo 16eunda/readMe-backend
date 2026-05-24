@@ -185,19 +185,37 @@ public class RecService {
                 .limit(MAX_RECOMMENDATIONS)
                 .toList();
 
+        // ===== 6️⃣ 최후 폴백: 위 모든 로직에서도 추천이 없으면 전체에서 랜덤 1권 =====
+        if (finalList.isEmpty()) {
+            List<FileEntity> anyRandom = (userId != null)
+                    ? fileRepository.findAnyRandomByUserId(userId)
+                    : fileRepository.findAnyRandomByDeviceId(deviceId);
+
+            finalList = anyRandom.stream().limit(1).toList();
+            log.info("🎲 최후 폴백 추천: 전체 랜덤 {}건", finalList.size());
+        }
+
         // 품질 판단
         String quality;
         String message;
 
-        if (analyzedCount == 0) {
+        if (finalList.isEmpty()) {
+            // 파일 자체가 없는 경우
             quality = "NO_DATA";
-            message = "AI 분석된 파일이 없어요. 책을 읽으면 AI가 취향을 분석해드려요!";
+            message = "파일을 추가해보세요!";
+        } else if (analyzedCount == 0) {
+            quality = "NO_DATA";
+            message = "아직 AI 분석된 책이 없어요 📚\n책을 읽을수록 취향에 맞는 추천이 정확해져요!";
+        } else if (smartRecCount == 0) {
+            // 분석은 됐지만 추천 로직에서 아무것도 못 골라서 랜덤 폴백된 상태
+            quality = "LOW_DATA";
+            message = "아직 추천 데이터가 부족해요 😅\n책을 더 읽을수록 딱 맞는 추천을 드릴 수 있어요!";
         } else if (smartRecCount < 3) {
             quality = "LOW_DATA";
             message = "더 많은 책을 읽으면 추천이 정확해져요! (" + analyzedCount + "/" + totalCount + "권 분석됨)";
         } else {
             quality = "GOOD";
-            message = null; // 충분하면 메시지 없음
+            message = null;
         }
 
         log.info("🎯 추천 결과: {}건 (분석기반 {}건, 랜덤/폴백 {}건) quality={}",
