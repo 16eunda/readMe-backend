@@ -152,14 +152,4 @@ public class FileController {
         return ResponseEntity.ok(Map.of("exists", exists));
     }
 
-    // AI 분석 정보 조회 (장르, 키워드, 분위기, 요약, 타겟)
-    // GET /files/{id}/ai-info
-    @GetMapping("/{id}/ai-info")
-    public ResponseEntity<AiInfoResponse> getAiInfo(
-            @PathVariable Long id,
-            @RequestHeader(value = "X-Device-Id", required = false) String deviceId,
-            Authentication authentication
-    ) {
-        return ResponseEntity.ok(fileService.getAiInfo(id, deviceId, authentication));
-    }
 }
