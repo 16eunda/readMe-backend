@@ -339,9 +339,11 @@ public class RecService {
 
     private Long extractUserId(Authentication authentication) {
         if (authentication != null && authentication.isAuthenticated()
-                && authentication.getPrincipal() instanceof CustomUserDetails details) {
-            return details.getUserId();
+                && authentication.getPrincipal() instanceof CustomUserDetails) {
+            Long userId = ((CustomUserDetails) authentication.getPrincipal()).getUserId();
+            return userId;
         }
+
         return null;
     }
 }
