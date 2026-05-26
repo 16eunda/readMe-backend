@@ -5,6 +5,7 @@ import com.ReadMe.demo.domain.FileType;
 import com.ReadMe.demo.domain.UserEntity;
 import com.ReadMe.demo.dto.FileDto;
 import com.ReadMe.demo.dto.FileGenreKeywordDto;
+import com.ReadMe.demo.dto.RecFileDto;
 import jakarta.transaction.Transactional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -215,11 +216,11 @@ public interface FileRepository extends JpaRepository<FileEntity, Long> {
 
     // ===== 폴백용: 오래 전에 읽은 파일 재추천 =====
 
-    @Query("SELECT f FROM FileEntity f WHERE f.user.id = :userId AND f.lastReadAt IS NOT NULL ORDER BY f.lastReadAt ASC")
-    List<FileEntity> findOldestReadFilesByUserId(@Param("userId") Long userId);
+    @Query("SELECT new com.ReadMe.demo.dto.RecFileDto(f.id, f.title, f.uri, f.path, f.aiGenre, f.aiKeywords, f.progress, f.rating) FROM FileEntity f WHERE f.user.id = :userId AND f.lastReadAt IS NOT NULL ORDER BY f.lastReadAt ASC")
+    List<RecFileDto> findOldestReadFilesByUserId(@Param("userId") Long userId);
 
-    @Query("SELECT f FROM FileEntity f WHERE f.deviceId = :deviceId AND f.user IS NULL AND f.lastReadAt IS NOT NULL ORDER BY f.lastReadAt ASC")
-    List<FileEntity> findOldestReadFilesByDeviceId(@Param("deviceId") String deviceId);
+    @Query("SELECT new com.ReadMe.demo.dto.RecFileDto(f.id, f.title, f.uri, f.path, f.aiGenre, f.aiKeywords, f.progress, f.rating) FROM FileEntity f WHERE f.deviceId = :deviceId AND f.user IS NULL AND f.lastReadAt IS NOT NULL ORDER BY f.lastReadAt ASC")
+    List<RecFileDto> findOldestReadFilesByDeviceId(@Param("deviceId") String deviceId);
 
     // ===== 추천 품질 판단용 =====
 
@@ -236,16 +237,16 @@ public interface FileRepository extends JpaRepository<FileEntity, Long> {
     long countAllByDeviceId(@Param("deviceId") String deviceId);
 
     // 안 읽은 파일 랜덤 추천 - PostgreSQL RANDOM()
-    @Query(value = "SELECT * FROM file_entity f WHERE f.user_id = :userId AND f.last_read_at IS NULL ORDER BY RANDOM()", nativeQuery = true)
-    List<FileEntity> findUnreadRandomByUserId(@Param("userId") Long userId);
+    @Query(value = "SELECT f.id, f.title, f.uri, f.path, f.ai_genre, f.ai_keywords, f.progress, f.rating FROM files f WHERE f.user_id = :userId AND f.last_read_at IS NULL ORDER BY RANDOM()", nativeQuery = true)
+    List<Object[]> findUnreadRandomByUserIdRaw(@Param("userId") Long userId);
 
-    @Query(value = "SELECT * FROM file_entity f WHERE f.device_id = :deviceId AND f.user_id IS NULL AND f.last_read_at IS NULL ORDER BY RANDOM()", nativeQuery = true)
-    List<FileEntity> findUnreadRandomByDeviceId(@Param("deviceId") String deviceId);
+    @Query(value = "SELECT f.id, f.title, f.uri, f.path, f.ai_genre, f.ai_keywords, f.progress, f.rating FROM files f WHERE f.device_id = :deviceId AND f.user_id IS NULL AND f.last_read_at IS NULL ORDER BY RANDOM()", nativeQuery = true)
+    List<Object[]> findUnreadRandomByDeviceIdRaw(@Param("deviceId") String deviceId);
 
     // 최후 폴백: 전체에서 랜덤 1권
-    @Query(value = "SELECT * FROM file_entity f WHERE f.user_id = :userId ORDER BY RANDOM() LIMIT 1", nativeQuery = true)
-    List<FileEntity> findAnyRandomByUserId(@Param("userId") Long userId);
+    @Query(value = "SELECT f.id, f.title, f.uri, f.path, f.ai_genre, f.ai_keywords, f.progress, f.rating FROM files f WHERE f.user_id = :userId ORDER BY RANDOM() LIMIT 1", nativeQuery = true)
+    List<Object[]> findAnyRandomByUserIdRaw(@Param("userId") Long userId);
 
-    @Query(value = "SELECT * FROM file_entity f WHERE f.device_id = :deviceId AND f.user_id IS NULL ORDER BY RANDOM() LIMIT 1", nativeQuery = true)
-    List<FileEntity> findAnyRandomByDeviceId(@Param("deviceId") String deviceId);
+    @Query(value = "SELECT f.id, f.title, f.uri, f.path, f.ai_genre, f.ai_keywords, f.progress, f.rating FROM files f WHERE f.device_id = :deviceId AND f.user_id IS NULL ORDER BY RANDOM() LIMIT 1", nativeQuery = true)
+    List<Object[]> findAnyRandomByDeviceIdRaw(@Param("deviceId") String deviceId);
 }
