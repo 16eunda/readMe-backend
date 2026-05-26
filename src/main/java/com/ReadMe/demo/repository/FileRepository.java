@@ -4,6 +4,7 @@ import com.ReadMe.demo.domain.FileEntity;
 import com.ReadMe.demo.domain.FileType;
 import com.ReadMe.demo.domain.UserEntity;
 import com.ReadMe.demo.dto.FileDto;
+import com.ReadMe.demo.dto.FileGenreKeywordDto;
 import jakarta.transaction.Transactional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -196,10 +197,21 @@ public interface FileRepository extends JpaRepository<FileEntity, Long> {
     """)
     List<FileEntity> findUnanalyzedFilesByDeviceId(@Param("deviceId") String deviceId);
 
-    @Query("SELECT f FROM FileEntity f WHERE f.user.id = :userId AND f.lastReadAt IS NOT NULL ORDER BY f.lastReadAt DESC")
-    List<FileEntity> findTop10ByUserIdAndLastReadAtIsNotNullOrderByLastReadAtDesc(@Param("userId") Long userId, Pageable pageable);
+    @Query("""
+        SELECT new com.ReadMe.demo.dto.FileGenreKeywordDto(f.id, f.aiGenre, f.aiKeywords)
+        FROM FileEntity f
+        WHERE f.user.id = :userId AND f.lastReadAt IS NOT NULL
+        ORDER BY f.lastReadAt DESC
+    """)
+    List<FileGenreKeywordDto> findTop10ByUserIdAndLastReadAtIsNotNullOrderByLastReadAtDesc(@Param("userId") Long userId, Pageable pageable);
 
-    List<FileEntity> findTop10ByDeviceIdAndUserIsNullAndLastReadAtIsNotNullOrderByLastReadAtDesc(String deviceId);
+    @Query("""
+        SELECT new com.ReadMe.demo.dto.FileGenreKeywordDto(f.id, f.aiGenre, f.aiKeywords)
+        FROM FileEntity f
+        WHERE f.deviceId = :deviceId AND f.user IS NULL AND f.lastReadAt IS NOT NULL
+        ORDER BY f.lastReadAt DESC
+    """)
+    List<FileGenreKeywordDto> findTop10ByDeviceIdAndUserIsNullAndLastReadAtIsNotNullOrderByLastReadAtDesc(@Param("deviceId") String deviceId, Pageable pageable);
 
     // ===== 폴백용: 오래 전에 읽은 파일 재추천 =====
 

@@ -2,6 +2,7 @@ package com.ReadMe.demo.service;
 
 import com.ReadMe.demo.domain.FileEntity;
 import com.ReadMe.demo.dto.FileDto;
+import com.ReadMe.demo.dto.FileGenreKeywordDto;
 import com.ReadMe.demo.dto.RecommendationResponse;
 import com.ReadMe.demo.repository.FileRepository;
 import com.ReadMe.demo.repository.RecRepository;
@@ -234,19 +235,18 @@ public class RecService {
      * 선호 키워드 수집 (최근 읽은 파일 + 별점 높은 파일에서)
      */
     private Set<String> collectPreferredKeywords(Long userId, String deviceId) {
-        List<FileEntity> recentFiles;
+        List<FileGenreKeywordDto> recentFiles;
 
         if (userId != null) {
             recentFiles = fileRepository
                     .findTop10ByUserIdAndLastReadAtIsNotNullOrderByLastReadAtDesc(userId, PageRequest.of(0, 10));
         } else {
             recentFiles = fileRepository
-                    .findTop10ByDeviceIdAndUserIsNullAndLastReadAtIsNotNullOrderByLastReadAtDesc(deviceId);
+                    .findTop10ByDeviceIdAndUserIsNullAndLastReadAtIsNotNullOrderByLastReadAtDesc(deviceId, PageRequest.of(0, 10));
         }
 
-        // 최근 읽은 파일들의 키워드 수집
         Set<String> keywords = new HashSet<>();
-        for (FileEntity file : recentFiles) {
+        for (FileGenreKeywordDto file : recentFiles) {
             if (file.getAiKeywords() != null && !file.getAiKeywords().isEmpty()) {
                 Arrays.stream(file.getAiKeywords().split(","))
                         .map(String::trim)
@@ -303,14 +303,14 @@ public class RecService {
      * 선호 장르 찾기 (최근 읽은 파일에서 가장 많은 장르)
      */
     private Optional<String> findPreferredGenre(Long userId, String deviceId) {
-        List<FileEntity> recentFiles;
+        List<FileGenreKeywordDto> recentFiles;
 
         if (userId != null) {
             recentFiles = fileRepository
                     .findTop10ByUserIdAndLastReadAtIsNotNullOrderByLastReadAtDesc(userId, PageRequest.of(0, 10));
         } else {
             recentFiles = fileRepository
-                    .findTop10ByDeviceIdAndUserIsNullAndLastReadAtIsNotNullOrderByLastReadAtDesc(deviceId);
+                    .findTop10ByDeviceIdAndUserIsNullAndLastReadAtIsNotNullOrderByLastReadAtDesc(deviceId, PageRequest.of(0, 10));
         }
 
         if (recentFiles.isEmpty()) {
@@ -320,7 +320,7 @@ public class RecService {
         Map<String, Long> genreCount = recentFiles.stream()
                 .filter(f -> f.getAiGenre() != null && !"미분류".equals(f.getAiGenre()))
                 .collect(Collectors.groupingBy(
-                        FileEntity::getAiGenre,
+                        FileGenreKeywordDto::getAiGenre,
                         Collectors.counting()
                 ));
 
