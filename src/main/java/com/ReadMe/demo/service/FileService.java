@@ -252,6 +252,14 @@ public class FileService {
             file.setReadingPreview((String) body.get("readingPreview"));
         }
 
+        if (body.containsKey("anchorRatio")) {
+            // anchorRatio는 0~1 사이의 값으로, 책에서 현재 위치가 어디쯤인지 나타냄 (예: 0.5면 책의 중간 지점)
+            // 로그 남기기
+            Logger.getLogger(FileService.class.getName()).info("📌 anchorRatio 업데이트: " + body.get("anchorRatio"));
+            Double r = (Double) body.get("anchorRatio");
+            file.setAnchorRatio(r);
+        }
+
         // 완독 여부 업데이트
         file.setCompleted(completed);
 
