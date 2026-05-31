@@ -133,7 +133,7 @@ public class FileService {
         // userId가 있으면 userId로 조회 (로그인 상태)
         if (userId != null && !userId.isEmpty()) {
             try {
-                return fileRepository.findByPathAndUserId(path, userId, pageable);
+                return fileRepository.findByPathAndUserId(path, Long.parseLong(userId), pageable);
             } catch (Exception e) {
                 System.out.println("파일 조회 실패: " + e.getMessage());
             }

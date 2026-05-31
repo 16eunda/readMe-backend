@@ -44,7 +44,7 @@ public interface FileRepository extends JpaRepository<FileEntity, Long> {
     """)
     Page<FileDto> findByPathAndUserId(
             @Param("path") String path,
-            @Param("userId") String userId,
+            @Param("userId") Long userId,
             Pageable pageable
     );
 
