@@ -4,15 +4,24 @@ spring:
     driver-class-name: org.postgresql.Driver
     username: ${DATABASE_USERNAME}
     password: ${DATABASE_PASSWORD}
+    hikari:
+      connection-timeout: 20000
+      initialization-fail-timeout: 60000
+
+  devtools:
+    restart:
+      enabled: false
+    livereload:
+      enabled: false
 
   jpa:
     hibernate:
       ddl-auto: update
-    show-sql: true
-    database-platform: org.hibernate.dialect.PostgreSQLDialect
+    show-sql: false
+    open-in-view: false
     properties:
       hibernate:
-        format_sql: true
+        format_sql: false
 
 gemini:
   api:
@@ -23,4 +32,4 @@ jwt:
   secret: ${JWT_SECRET}
 
 server:
-  port: ${PORT:8080}
+  port: ${PORT:10000}
