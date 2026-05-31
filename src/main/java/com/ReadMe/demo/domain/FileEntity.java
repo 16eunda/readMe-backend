@@ -52,7 +52,7 @@ public class FileEntity {
     private int rating;
     private Double progress = 0.0;   // ★ 0~1 진행도 저장 (txt: 0~1, epub: cfi)
     private String epubCfi;         // ★ 마지막 읽은 위치 저장 (epub cfi)
-
+    private Double anchorRatio = 0.5;
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private FileType type;

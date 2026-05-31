@@ -23,6 +23,7 @@ public class FileDto {
     private String review;
     private Double progress;
     private String epubCfi;
+    private Double anchorRatio;
     private String readingPreview;
 
     public static FileDto from(FileEntity entity) {
@@ -37,6 +38,7 @@ public class FileDto {
                 .review(entity.getReview())
                 .progress(entity.getProgress())
                 .epubCfi(entity.getEpubCfi())
+                .anchorRatio(entity.getAnchorRatio())
                 .readingPreview(entity.getReadingPreview())
                 .build();
     }
