@@ -5,10 +5,12 @@ import com.ReadMe.demo.domain.UserEntity;
 import com.ReadMe.demo.dto.GooglePubSubMessage;
 import com.ReadMe.demo.dto.SubscribeRequest;
 import com.ReadMe.demo.repository.UserRepository;
+import com.ReadMe.demo.security.CustomUserDetails;
 import com.ReadMe.demo.service.SubscriptionService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
@@ -27,12 +29,15 @@ public class SubscriptionController {
     // 프리미엄 상태 조회 엔드포인트
     @GetMapping("/status")
     public ResponseEntity<?> getStatus(
-            @AuthenticationPrincipal UserDetails userDetails,
+            Authentication authentication,
             @RequestHeader(value = "X-Device-Id", required = false) String deviceId
     ) {
-        UserEntity user = userDetails != null
-                ? userRepository.findByEmail(userDetails.getUsername()).orElse(null)
-                : null;
+        UserEntity user = null;
+        // 로그인 상태면 userId도 저
+        if (authentication != null && authentication.isAuthenticated()
+                && authentication.getPrincipal() instanceof CustomUserDetails) {
+            user = ((CustomUserDetails) authentication.getPrincipal()).getUser();
+        }
 
         boolean isPremium = subscriptionService.isPremium(user, deviceId);
         return ResponseEntity.ok(Map.of("isPremium", isPremium));
