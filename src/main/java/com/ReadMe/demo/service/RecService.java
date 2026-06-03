@@ -89,13 +89,21 @@ public class RecService {
 
         // 추천 파일 모으기
         List<RecFileDto> recommendations = new ArrayList<>();
+        Map<String, Integer> stageAdded = new LinkedHashMap<>();
+        stageAdded.put("genre_keyword", 0);
+        stageAdded.put("rating", 0);
+        stageAdded.put("in_progress", 0);
+        stageAdded.put("random_unread", 0);
+        stageAdded.put("old_read", 0);
+        stageAdded.put("fallback_any_random", 0);
 
         // 사용자의 선호 키워드 수집 (최근 읽은 파일들에서)
         Set<String> preferredKeywords = collectPreferredKeywords(userId, deviceId);
-        log.info("🔑 선호 키워드: {}", preferredKeywords);
+        log.info("🔑 [추천] 선호 키워드: {}", preferredKeywords);
 
         // 1️⃣ 장르 + 키워드 기반 추천 (분석된 파일만)
         Optional<String> preferredGenre = findPreferredGenre(userId, deviceId);
+        log.info("🧭 [추천] 1단계(장르+키워드) 시작 - preferredGenre={}", preferredGenre.orElse("없음"));
         if (preferredGenre.isPresent()) {
             List<RecFileDto> genreBased = (userId != null)
                     ? recRepository.findByAiGenreAndLastReadAtIsNullAndUserId(preferredGenre.get(), userId)
@@ -103,16 +111,20 @@ public class RecService {
 
             // 키워드 유사도 높은 순으로 정렬
             List<RecFileDto> sorted = sortByKeywordSimilarity(genreBased, preferredKeywords);
-            recommendations.addAll(sorted.stream()
-                    .limit(GENRE_BASED_LIMIT)
-                    .toList());
-            log.info("📖 장르+키워드 기반 추천 {}건 (장르: {})",
-                    Math.min(sorted.size(), GENRE_BASED_LIMIT), preferredGenre.get());
+            int before = recommendations.size();
+            recommendations.addAll(sorted.stream().limit(GENRE_BASED_LIMIT).toList());
+            int added = recommendations.size() - before;
+            stageAdded.put("genre_keyword", added);
+
+            log.info("📖 [추천] 1단계 결과 - 후보={} 추가={} 누적={}", genreBased.size(), added, recommendations.size());
+            log.info("📖 [추천] 1단계 추가목록={}",
+                    recommendations.stream().skip(before).map(r -> r.getId() + ":" + r.getTitle()).toList());
         }
 
         // 2️⃣ 별점 기반 추천 (로그인 유저만, 분석된 파일만)
         if (userId != null && recommendations.size() < MAX_RECOMMENDATIONS) {
-            // highRatedFiles는 aiContent 없이 필요한 필드만 쓰므로 FileGenreKeywordDto 재활용
+            log.info("⭐ [추천] 2단계(별점 기반) 시작 - 현재 누적={}", recommendations.size());
+
             Set<String> favoriteGenres = fileRepository
                     .findTop10ByUserIdAndLastReadAtIsNotNullOrderByLastReadAtDesc(userId, PageRequest.of(0, 50))
                     .stream()
@@ -121,7 +133,9 @@ public class RecService {
                     .collect(Collectors.toSet());
 
             if (preferredGenre.isPresent()) favoriteGenres.remove(preferredGenre.get());
+            log.info("⭐ [추천] 2단계 장르 후보={}", favoriteGenres);
 
+            int before = recommendations.size();
             for (String genre : favoriteGenres) {
                 if (recommendations.size() >= MAX_RECOMMENDATIONS) break;
                 List<RecFileDto> similarFiles = recRepository.findByAiGenreAndLastReadAtIsNullAndUserId(genre, userId);
@@ -130,17 +144,28 @@ public class RecService {
                         .findFirst()
                         .ifPresent(recommendations::add);
             }
+            int added = recommendations.size() - before;
+            stageAdded.put("rating", added);
+            log.info("⭐ [추천] 2단계 결과 - 추가={} 누적={}", added, recommendations.size());
+            log.info("⭐ [추천] 2단계 추가목록={}",
+                    recommendations.stream().skip(before).map(r -> r.getId() + ":" + r.getTitle()).toList());
         }
 
         // 3️⃣ 읽다 만 파일 추천 (분석 여부 무관)
         if (recommendations.size() < MAX_RECOMMENDATIONS) {
+            log.info("⏳ [추천] 3단계(읽다 만 파일) 시작 - 현재 누적={}", recommendations.size());
             List<RecFileDto> inProgress = (userId != null)
                     ? recRepository.findByProgressBetweenAndUserId(0.1, 0.9, userId)
                     : recRepository.findByProgressBetweenAndDeviceIdAndUserIsNull(0.1, 0.9, deviceId);
+
+            int before = recommendations.size();
             inProgress.stream()
                     .filter(f -> recommendations.stream().noneMatch(r -> r.getId().equals(f.getId())))
                     .limit(MAX_RECOMMENDATIONS - recommendations.size())
                     .forEach(recommendations::add);
+            int added = recommendations.size() - before;
+            stageAdded.put("in_progress", added);
+            log.info("⏳ [추천] 3단계 결과 - 후보={} 추가={} 누적={}", inProgress.size(), added, recommendations.size());
         }
 
         // 여기까지가 "분석 기반 추천" 개수
@@ -148,39 +173,50 @@ public class RecService {
 
         // 4️⃣ 아직 부족하면: 안 읽은 파일 랜덤 추천
         if (recommendations.size() < MAX_RECOMMENDATIONS) {
+            log.info("🎲 [추천] 4단계(안 읽은 랜덤) 시작 - 현재 누적={}", recommendations.size());
             List<RecFileDto> randomUnread = toRecFileDtoList(userId != null
                     ? fileRepository.findUnreadRandomByUserIdRaw(userId)
                     : fileRepository.findUnreadRandomByDeviceIdRaw(deviceId));
+
+            int before = recommendations.size();
             randomUnread.stream()
                     .filter(f -> recommendations.stream().noneMatch(r -> r.getId().equals(f.getId())))
                     .limit(MAX_RECOMMENDATIONS - recommendations.size())
                     .forEach(recommendations::add);
+            int added = recommendations.size() - before;
+            stageAdded.put("random_unread", added);
+            log.info("🎲 [추천] 4단계 결과 - 후보={} 추가={} 누적={}", randomUnread.size(), added, recommendations.size());
         }
 
         // 5️⃣ 그래도 부족하면: 오래 전에 읽은 파일
         if (recommendations.size() < MAX_RECOMMENDATIONS) {
+            log.info("🕰️ [추천] 5단계(오래 전에 읽은 파일) 시작 - 현재 누적={}", recommendations.size());
             List<RecFileDto> oldFiles = (userId != null)
                     ? fileRepository.findOldestReadFilesByUserId(userId)
                     : fileRepository.findOldestReadFilesByDeviceId(deviceId);
+
+            int before = recommendations.size();
             oldFiles.stream()
                     .filter(f -> recommendations.stream().noneMatch(r -> r.getId().equals(f.getId())))
                     .limit(MAX_RECOMMENDATIONS - recommendations.size())
                     .forEach(recommendations::add);
+            int added = recommendations.size() - before;
+            stageAdded.put("old_read", added);
+            log.info("🕰️ [추천] 5단계 결과 - 후보={} 추가={} 누적={}", oldFiles.size(), added, recommendations.size());
         }
 
         // 최종 결과
-        List<RecFileDto> finalList = recommendations.stream()
-                .distinct()
-                .limit(MAX_RECOMMENDATIONS)
-                .toList();
+        List<RecFileDto> finalList = recommendations.stream().distinct().limit(MAX_RECOMMENDATIONS).toList();
 
         // ===== 6️⃣ 최후 폴백: 위 모든 로직에서도 추천이 없으면 전체에서 랜덤 1권 =====
         if (finalList.isEmpty()) {
+            log.info("🆘 [추천] 6단계(최후 폴백) 시작");
             List<RecFileDto> anyRandom = toRecFileDtoList(userId != null
                     ? fileRepository.findAnyRandomByUserIdRaw(userId)
                     : fileRepository.findAnyRandomByDeviceIdRaw(deviceId));
             finalList = anyRandom.stream().limit(1).toList();
-            log.info("🎲 최후 폴백 추천: 전체 랜덤 {}건", finalList.size());
+            stageAdded.put("fallback_any_random", finalList.size());
+            log.info("🆘 [추천] 6단계 결과 - 추가={}", finalList.size());
         }
 
         // 품질 판단
@@ -206,8 +242,11 @@ public class RecService {
             message = null;
         }
 
-        log.info("🎯 추천 결과: {}건 (분석기반 {}건, 랜덤/폴백 {}건) quality={}",
+        log.info("📌 [추천] 단계별 추가 집계={}", stageAdded);
+        log.info("🎯 [추천] 최종 결과 {}건 (분석기반 {}건, 랜덤/폴백 {}건) quality={}",
                 finalList.size(), smartRecCount, finalList.size() - smartRecCount, quality);
+        log.info("🎯 [추천] 최종 목록={}",
+                finalList.stream().map(r -> r.getId() + ":" + r.getTitle()).toList());
 
         return RecommendationResponse.builder()
                 .recommendations(finalList)
