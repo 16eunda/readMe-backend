@@ -107,7 +107,7 @@ public class RecService {
         if (preferredGenre.isPresent()) {
             List<RecFileDto> genreBased = (userId != null)
                     ? recRepository.findByAiGenreAndLastReadAtIsNullAndUserId(preferredGenre.get(), userId)
-                    : recRepository.findByAiGenreAndLastReadAtIsNullAndDeviceIdAndUserIsNull(preferredGenre.get(), deviceId);
+                    : recRepository.findByAiGenreAndLastReadAtIsNullAndDeviceId(preferredGenre.get(), deviceId);
 
             // 키워드 유사도 높은 순으로 정렬
             List<RecFileDto> sorted = sortByKeywordSimilarity(genreBased, preferredKeywords);
@@ -156,7 +156,7 @@ public class RecService {
             log.info("⏳ [추천] 3단계(읽다 만 파일) 시작 - 현재 누적={}", recommendations.size());
             List<RecFileDto> inProgress = (userId != null)
                     ? recRepository.findByProgressBetweenAndUserId(0.1, 0.9, userId)
-                    : recRepository.findByProgressBetweenAndDeviceIdAndUserIsNull(0.1, 0.9, deviceId);
+                    : recRepository.findByProgressBetweenAndDeviceId(0.1, 0.9, deviceId);
 
             int before = recommendations.size();
             inProgress.stream()
@@ -277,7 +277,7 @@ public class RecService {
     private Set<String> collectPreferredKeywords(Long userId, String deviceId) {
         List<FileGenreKeywordDto> recentFiles = (userId != null)
                 ? fileRepository.findTop10ByUserIdAndLastReadAtIsNotNullOrderByLastReadAtDesc(userId, PageRequest.of(0, 10))
-                : fileRepository.findTop10ByDeviceIdAndUserIsNullAndLastReadAtIsNotNullOrderByLastReadAtDesc(deviceId, PageRequest.of(0, 10));
+                : fileRepository.findTop10ByDeviceIdAndLastReadAtIsNotNullOrderByLastReadAtDesc(deviceId, PageRequest.of(0, 10));
 
         Set<String> keywords = new HashSet<>();
         for (FileGenreKeywordDto file : recentFiles) {
@@ -319,7 +319,7 @@ public class RecService {
     private Optional<String> findPreferredGenre(Long userId, String deviceId) {
         List<FileGenreKeywordDto> recentFiles = (userId != null)
                 ? fileRepository.findTop10ByUserIdAndLastReadAtIsNotNullOrderByLastReadAtDesc(userId, PageRequest.of(0, 10))
-                : fileRepository.findTop10ByDeviceIdAndUserIsNullAndLastReadAtIsNotNullOrderByLastReadAtDesc(deviceId, PageRequest.of(0, 10));
+                : fileRepository.findTop10ByDeviceIdAndLastReadAtIsNotNullOrderByLastReadAtDesc(deviceId, PageRequest.of(0, 10));
 
         if (recentFiles.isEmpty()) return Optional.empty();
 

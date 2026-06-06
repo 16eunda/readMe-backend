@@ -26,9 +26,9 @@ public interface FileRepository extends JpaRepository<FileEntity, Long> {
             f.id, f.title, f.preview, f.date, f.rating, f.uri, f.path, f.review, f.progress, f.epubCfi, f.anchorRatio, f.readingPreview
         )
         FROM FileEntity f
-        WHERE f.path = :path AND f.deviceId = :deviceId AND f.user IS NULL
+        WHERE f.path = :path AND f.deviceId = :deviceId
     """)
-    Page<FileDto> findByPathAndDeviceIdAndUserIsNull(
+    Page<FileDto> findByPathAndDeviceId(
             @Param("path") String path,
             @Param("deviceId") String deviceId,
             Pageable pageable
@@ -51,8 +51,8 @@ public interface FileRepository extends JpaRepository<FileEntity, Long> {
     // 추가: userId와 id 리스트로 파일 삭제 (보안 필터링)
     void deleteByUserAndIdIn(UserEntity user, List<Long> ids);
 
-    // 추가: deviceId와 id 리스트로 파일 삭제 (보안 필터링, 게스트)
-    void deleteByDeviceIdAndUserIsNullAndIdIn(String deviceId, List<Long> ids);
+    // deviceId와 id 리스트로 파일 삭제
+    void deleteByDeviceIdAndIdIn(String deviceId, List<Long> ids);
 
     // 중복 확인
     Boolean existsByTitleAndPath(String title, String path);
@@ -77,9 +77,9 @@ public interface FileRepository extends JpaRepository<FileEntity, Long> {
             f.id, f.title, f.preview, f.date, f.rating, f.uri, f.path, f.review, f.progress, f.epubCfi, f.anchorRatio, f.readingPreview
         )
         FROM FileEntity f
-        WHERE f.deviceId = :deviceId AND f.user IS NULL AND LOWER(f.title) LIKE LOWER(CONCAT('%', :keyword, '%'))
+        WHERE f.deviceId = :deviceId AND LOWER(f.title) LIKE LOWER(CONCAT('%', :keyword, '%'))
     """)
-    Page<FileDto> findByDeviceIdAndUserIsNullAndTitleContainingIgnoreCase(
+    Page<FileDto> findByDeviceIdAndTitleContainingIgnoreCase(
             @Param("deviceId") String deviceId, @Param("keyword") String keyword, Pageable pageable
     );
 
@@ -92,16 +92,19 @@ public interface FileRepository extends JpaRepository<FileEntity, Long> {
     @Query("SELECT COUNT(f) FROM FileEntity f WHERE f.user.id = :userId")
     long countByUserId(@Param("userId") Long userId);
 
-    // deviceId별 전체 파일 수 (게스트)
+    // deviceId별 전체 파일 수
+    long countByDeviceId(String deviceId);
+
+    // 로그인 시 연결 가능한 deviceId별 파일 수
     long countByDeviceIdAndUserIsNull(String deviceId);
 
     // userId별 완독 파일 수
     @Query("SELECT COUNT(f) FROM FileEntity f WHERE f.completed = true AND f.user.id = :userId")
     long countCompletedFilesByUserId(@Param("userId") Long userId);
 
-    // deviceId별 완독 파일 수 (게스트)
-    @Query("SELECT COUNT(f) FROM FileEntity f WHERE f.completed = true AND f.deviceId = :deviceId AND f.user IS NULL")
-    long countCompletedFilesByDeviceIdAndUserIsNull(String deviceId);
+    // deviceId별 완독 파일 수
+    @Query("SELECT COUNT(f) FROM FileEntity f WHERE f.completed = true AND f.deviceId = :deviceId")
+    long countCompletedFilesByDeviceId(String deviceId);
 
     // 별점 5개 파일 수
     long countByRating(int rating);
@@ -110,8 +113,8 @@ public interface FileRepository extends JpaRepository<FileEntity, Long> {
     @Query("SELECT COUNT(f) FROM FileEntity f WHERE f.rating = :rating AND f.user.id = :userId")
     long countByRatingAndUserId(@Param("rating") int rating, @Param("userId") Long userId);
 
-    // deviceId별 별점 파일 수 (게스트)
-    long countByRatingAndDeviceIdAndUserIsNull(int rating, String deviceId);
+    // deviceId별 별점 파일 수
+    long countByRatingAndDeviceId(int rating, String deviceId);
 
     // ===== 추천용 메서드 =====
 
@@ -119,8 +122,8 @@ public interface FileRepository extends JpaRepository<FileEntity, Long> {
     @Query("SELECT f FROM FileEntity f WHERE f.user.id = :userId AND f.lastReadAt IS NOT NULL ORDER BY f.lastReadAt DESC")
     List<FileEntity> findTop50ByUserIdAndLastReadAtIsNotNullOrderByLastReadAtDesc(@Param("userId") Long userId);
 
-    // deviceId별 최근 읽은 파일 (게스트)
-    List<FileEntity> findTop50ByDeviceIdAndUserIsNullAndLastReadAtIsNotNullOrderByLastReadAtDesc(String deviceId);
+    // deviceId별 최근 읽은 파일
+    List<FileEntity> findTop50ByDeviceIdAndLastReadAtIsNotNullOrderByLastReadAtDesc(String deviceId);
 
     // ===== 히스토리용 - @Lob 제외하고 필요한 컬럼만 조회 =====
 
@@ -139,7 +142,7 @@ public interface FileRepository extends JpaRepository<FileEntity, Long> {
             f.id, f.title, f.preview, f.date, f.rating, f.uri, f.path, f.review, f.progress, f.epubCfi, f.anchorRatio, f.readingPreview
         )
         FROM FileEntity f
-        WHERE f.deviceId = :deviceId AND f.user IS NULL AND f.lastReadAt IS NOT NULL
+        WHERE f.deviceId = :deviceId AND f.lastReadAt IS NOT NULL
         ORDER BY f.lastReadAt DESC
     """)
     List<FileDto> findRecentFileDtosByDeviceId(@Param("deviceId") String deviceId, Pageable pageable);
@@ -152,14 +155,14 @@ public interface FileRepository extends JpaRepository<FileEntity, Long> {
     // userId와 path로 파일 삭제 (폴더 삭제 시)
     void deleteByUserAndPathIn(UserEntity user, List<Long> folderIds);
 
-    // deviceId와 path로 파일 삭제 (폴더 삭제 시, 게스트)
-    void deleteByDeviceIdAndUserIsNullAndPathIn(String deviceId, List<Long> folderIds);
+    // deviceId와 path로 파일 삭제 (폴더 삭제 시)
+    void deleteByDeviceIdAndPathIn(String deviceId, List<Long> folderIds);
 
     // userId와 경로 리스트로 폴더 수 확인 (삭제 전 내부 파일 존재 여부 확인)
     long countByUserAndPathIn(UserEntity user, List<Long> paths);
 
-    // deviceId와 경로 리스트로 폴더 수 확인 (삭제 전 내부 파일 존재 여부 확인, 게스트)
-    long countByDeviceIdAndUserIsNullAndPathIn(String deviceId, List<Long> paths);
+    // deviceId와 경로 리스트로 폴더 수 확인 (삭제 전 내부 파일 존재 여부 확인)
+    long countByDeviceIdAndPathIn(String deviceId, List<Long> paths);
 
     // deviceId를 userId와 연결
     @Modifying
@@ -191,7 +194,7 @@ public interface FileRepository extends JpaRepository<FileEntity, Long> {
     // deviceId별 미분석 파일 (게스트)
     @Query("""
         SELECT f FROM FileEntity f
-        WHERE f.deviceId = :deviceId AND f.user IS NULL
+        WHERE f.deviceId = :deviceId
         AND (f.aiGenre IS NULL OR f.analysisStatus = 'PENDING' OR f.analysisStatus = 'FAILED')
         AND f.analysisStatus != 'SKIPPED'
         ORDER BY f.lastReadAt DESC
@@ -209,17 +212,17 @@ public interface FileRepository extends JpaRepository<FileEntity, Long> {
     @Query("""
         SELECT new com.ReadMe.demo.dto.FileGenreKeywordDto(f.id, f.aiGenre, f.aiKeywords)
         FROM FileEntity f
-        WHERE f.deviceId = :deviceId AND f.user IS NULL AND f.lastReadAt IS NOT NULL
+        WHERE f.deviceId = :deviceId AND f.lastReadAt IS NOT NULL
         ORDER BY f.lastReadAt DESC
     """)
-    List<FileGenreKeywordDto> findTop10ByDeviceIdAndUserIsNullAndLastReadAtIsNotNullOrderByLastReadAtDesc(@Param("deviceId") String deviceId, Pageable pageable);
+    List<FileGenreKeywordDto> findTop10ByDeviceIdAndLastReadAtIsNotNullOrderByLastReadAtDesc(@Param("deviceId") String deviceId, Pageable pageable);
 
     // ===== 폴백용: 오래 전에 읽은 파일 재추천 =====
 
     @Query("SELECT new com.ReadMe.demo.dto.RecFileDto(f.id, f.title, f.uri, f.path, f.aiGenre, f.aiKeywords, f.progress, f.rating) FROM FileEntity f WHERE f.user.id = :userId AND f.lastReadAt IS NOT NULL ORDER BY f.lastReadAt ASC")
     List<RecFileDto> findOldestReadFilesByUserId(@Param("userId") Long userId);
 
-    @Query("SELECT new com.ReadMe.demo.dto.RecFileDto(f.id, f.title, f.uri, f.path, f.aiGenre, f.aiKeywords, f.progress, f.rating) FROM FileEntity f WHERE f.deviceId = :deviceId AND f.user IS NULL AND f.lastReadAt IS NOT NULL ORDER BY f.lastReadAt ASC")
+    @Query("SELECT new com.ReadMe.demo.dto.RecFileDto(f.id, f.title, f.uri, f.path, f.aiGenre, f.aiKeywords, f.progress, f.rating) FROM FileEntity f WHERE f.deviceId = :deviceId AND f.lastReadAt IS NOT NULL ORDER BY f.lastReadAt ASC")
     List<RecFileDto> findOldestReadFilesByDeviceId(@Param("deviceId") String deviceId);
 
     // ===== 추천 품질 판단용 =====
@@ -227,26 +230,26 @@ public interface FileRepository extends JpaRepository<FileEntity, Long> {
     @Query("SELECT COUNT(f) FROM FileEntity f WHERE f.user.id = :userId AND f.analysisStatus = 'DONE'")
     long countAnalyzedByUserId(@Param("userId") Long userId);
 
-    @Query("SELECT COUNT(f) FROM FileEntity f WHERE f.deviceId = :deviceId AND f.user IS NULL AND f.analysisStatus = 'DONE'")
+    @Query("SELECT COUNT(f) FROM FileEntity f WHERE f.deviceId = :deviceId AND f.analysisStatus = 'DONE'")
     long countAnalyzedByDeviceId(@Param("deviceId") String deviceId);
 
     @Query("SELECT COUNT(f) FROM FileEntity f WHERE f.user.id = :userId")
     long countAllByUserId(@Param("userId") Long userId);
 
-    @Query("SELECT COUNT(f) FROM FileEntity f WHERE f.deviceId = :deviceId AND f.user IS NULL")
+    @Query("SELECT COUNT(f) FROM FileEntity f WHERE f.deviceId = :deviceId")
     long countAllByDeviceId(@Param("deviceId") String deviceId);
 
     // 안 읽은 파일 랜덤 추천 - PostgreSQL RANDOM()
     @Query(value = "SELECT f.id, f.title, f.uri, f.path, f.ai_genre, f.ai_keywords, f.progress, f.rating FROM files f WHERE f.user_id = :userId AND f.last_read_at IS NULL ORDER BY RANDOM()", nativeQuery = true)
     List<Object[]> findUnreadRandomByUserIdRaw(@Param("userId") Long userId);
 
-    @Query(value = "SELECT f.id, f.title, f.uri, f.path, f.ai_genre, f.ai_keywords, f.progress, f.rating FROM files f WHERE f.device_id = :deviceId AND f.user_id IS NULL AND f.last_read_at IS NULL ORDER BY RANDOM()", nativeQuery = true)
+    @Query(value = "SELECT f.id, f.title, f.uri, f.path, f.ai_genre, f.ai_keywords, f.progress, f.rating FROM files f WHERE f.device_id = :deviceId AND f.last_read_at IS NULL ORDER BY RANDOM()", nativeQuery = true)
     List<Object[]> findUnreadRandomByDeviceIdRaw(@Param("deviceId") String deviceId);
 
     // 최후 폴백: 전체에서 랜덤 1권
     @Query(value = "SELECT f.id, f.title, f.uri, f.path, f.ai_genre, f.ai_keywords, f.progress, f.rating FROM files f WHERE f.user_id = :userId ORDER BY RANDOM() LIMIT 1", nativeQuery = true)
     List<Object[]> findAnyRandomByUserIdRaw(@Param("userId") Long userId);
 
-    @Query(value = "SELECT f.id, f.title, f.uri, f.path, f.ai_genre, f.ai_keywords, f.progress, f.rating FROM files f WHERE f.device_id = :deviceId AND f.user_id IS NULL ORDER BY RANDOM() LIMIT 1", nativeQuery = true)
+    @Query(value = "SELECT f.id, f.title, f.uri, f.path, f.ai_genre, f.ai_keywords, f.progress, f.rating FROM files f WHERE f.device_id = :deviceId ORDER BY RANDOM() LIMIT 1", nativeQuery = true)
     List<Object[]> findAnyRandomByDeviceIdRaw(@Param("deviceId") String deviceId);
 }

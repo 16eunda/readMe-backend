@@ -29,9 +29,9 @@ public class FileStatsService {
         }
         // deviceId로 조회 (게스트)
         else if (deviceId != null && !deviceId.isEmpty()) {
-            totalCount = fileRepository.countByDeviceIdAndUserIsNull(deviceId);
-            completedCount = fileRepository.countCompletedFilesByDeviceIdAndUserIsNull(deviceId);
-            fiveStarCount = fileRepository.countByRatingAndDeviceIdAndUserIsNull(5, deviceId);
+            totalCount = fileRepository.countByDeviceId(deviceId);
+            completedCount = fileRepository.countCompletedFilesByDeviceId(deviceId);
+            fiveStarCount = fileRepository.countByRatingAndDeviceId(5, deviceId);
         }
         // 둘 다 없으면 0
         else {

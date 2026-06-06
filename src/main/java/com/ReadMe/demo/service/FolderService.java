@@ -50,8 +50,8 @@ public class FolderService {
         }
 
         List<FolderEntity> folders = (path == null)
-                ? folderRepository.findByDeviceIdAndUserIsNull(deviceId)
-                : folderRepository.findByDeviceIdAndUserIsNullAndPath(deviceId, path);
+                ? folderRepository.findByDeviceId(deviceId)
+                : folderRepository.findByDeviceIdAndPath(deviceId, path);
         return folders.stream().map(FolderDto::from).toList();
     }
 
@@ -108,7 +108,7 @@ public class FolderService {
                 children = folderRepository.findByUserAndPath(user, currentId.toString());
             } else {
                 children = folderRepository
-                        .findByDeviceIdAndUserIsNullAndPath(deviceId, currentId.toString());
+                        .findByDeviceIdAndPath(deviceId, currentId.toString());
             }
 
             for (FolderEntity child : children) {
@@ -138,14 +138,14 @@ public class FolderService {
         if (user != null) {
             fileRepository.deleteByUserAndPathIn(user, folderIds);
         } else {
-            fileRepository.deleteByDeviceIdAndUserIsNullAndPathIn(deviceId, folderIds);
+            fileRepository.deleteByDeviceIdAndPathIn(deviceId, folderIds);
         }
 
         // 폴더 삭제
         if (user != null) {
             folderRepository.deleteByUserAndIdIn(user, folderIds);
         } else {
-            folderRepository.deleteByDeviceIdAndUserIsNullAndIdIn(deviceId, folderIds);
+            folderRepository.deleteByDeviceIdAndIdIn(deviceId, folderIds);
         }
     }
 
@@ -162,8 +162,7 @@ public class FolderService {
 
         } else {
 
-            if (folder.getUser() != null ||
-                    !deviceId.equals(folder.getDeviceId())) {
+            if (!deviceId.equals(folder.getDeviceId())) {
                 throw new RuntimeException("삭제 권한 없음");
             }
 
@@ -204,7 +203,7 @@ public class FolderService {
         if (user != null) {
             fileCount = fileRepository.countByUserAndPathIn(user, deleteFolderIds);
         } else {
-            fileCount = fileRepository.countByDeviceIdAndUserIsNullAndPathIn(deviceId, deleteFolderIds);
+            fileCount = fileRepository.countByDeviceIdAndPathIn(deviceId, deleteFolderIds);
         }
 
         // 하위 폴더 또는 파일 존재 여부
@@ -231,9 +230,9 @@ public class FolderService {
 
         } else {
 
-            fileRepository.deleteByDeviceIdAndUserIsNullAndPathIn(deviceId, deleteFolderIds);
+            fileRepository.deleteByDeviceIdAndPathIn(deviceId, deleteFolderIds);
 
-            folderRepository.deleteByDeviceIdAndUserIsNullAndIdIn(deviceId, deleteFolderIds);
+            folderRepository.deleteByDeviceIdAndIdIn(deviceId, deleteFolderIds);
         }
     }
 

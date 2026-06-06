@@ -139,7 +139,7 @@ public class FileService {
             }
         } else {
             try {
-                return fileRepository.findByPathAndDeviceIdAndUserIsNull(path, deviceId, pageable);
+                return fileRepository.findByPathAndDeviceId(path, deviceId, pageable);
             } catch (Exception e) {
                 System.out.println("파일 조회 실패: " + e.getMessage());
             }
@@ -173,7 +173,7 @@ public class FileService {
             System.out.println("🔍 검색 - 로그인 상태, userId: " + user.getId() + ", keyword: " + keyword);
             return fileRepository.findByUserIdAndTitleContainingIgnoreCase(user.getId(), keyword, pageable);
         } else if (deviceId != null && !deviceId.isEmpty()) {
-            return fileRepository.findByDeviceIdAndUserIsNullAndTitleContainingIgnoreCase(deviceId, keyword, pageable);
+            return fileRepository.findByDeviceIdAndTitleContainingIgnoreCase(deviceId, keyword, pageable);
         }
         System.out.println("검색 - 인증 정보 없음, 검색 실패");
         return Page.empty(pageable);
@@ -216,7 +216,7 @@ public class FileService {
         if (user != null) {
             fileRepository.deleteByUserAndIdIn(user, ids);
         } else {
-            fileRepository.deleteByDeviceIdAndUserIsNullAndIdIn(deviceId, ids);
+            fileRepository.deleteByDeviceIdAndIdIn(deviceId, ids);
         }
     }
 
