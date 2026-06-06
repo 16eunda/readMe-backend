@@ -49,7 +49,7 @@ public interface FileReadLogRepository extends JpaRepository<FileReadLog, Long> 
         )
         FROM FileReadLog r
         JOIN r.file f
-        WHERE r.readAt >= :from AND f.deviceId = :deviceId AND f.user IS NULL
+        WHERE r.readAt >= :from AND f.deviceId = :deviceId
         GROUP BY f.id, f.title, f.progress, f.rating, f.uri
         ORDER BY COUNT(r.id) DESC, MAX(r.readAt) DESC
     """)
@@ -96,7 +96,7 @@ public interface FileReadLogRepository extends JpaRepository<FileReadLog, Long> 
         )
         FROM FileReadLog r
         JOIN r.file f
-        WHERE r.readAt >= :start AND r.readAt < :end AND f.deviceId = :deviceId AND f.user IS NULL
+        WHERE r.readAt >= :start AND r.readAt < :end AND f.deviceId = :deviceId
         GROUP BY f.id, f.title, f.progress, f.rating, f.uri
         ORDER BY COUNT(r.id) DESC, MAX(r.readAt) DESC
     """)
@@ -144,4 +144,3 @@ public interface FileReadLogRepository extends JpaRepository<FileReadLog, Long> 
             @Param("startOfNextDay") LocalDateTime startOfNextDay
     );
 }
-

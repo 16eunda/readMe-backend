@@ -23,12 +23,12 @@ public interface RecRepository extends JpaRepository<FileEntity, Long> {
 
     // ===== deviceId 필터링 (게스트) =====
 
-    @Query("SELECT new com.ReadMe.demo.dto.RecFileDto(f.id, f.title, f.uri, f.path, f.aiGenre, f.aiKeywords, f.progress, f.rating) FROM FileEntity f WHERE f.aiGenre = :genre AND f.lastReadAt IS NULL AND f.deviceId = :deviceId AND f.user IS NULL")
-    List<RecFileDto> findByAiGenreAndLastReadAtIsNullAndDeviceIdAndUserIsNull(@Param("genre") String genre, @Param("deviceId") String deviceId);
+    @Query("SELECT new com.ReadMe.demo.dto.RecFileDto(f.id, f.title, f.uri, f.path, f.aiGenre, f.aiKeywords, f.progress, f.rating) FROM FileEntity f WHERE f.aiGenre = :genre AND f.lastReadAt IS NULL AND f.deviceId = :deviceId")
+    List<RecFileDto> findByAiGenreAndLastReadAtIsNullAndDeviceId(@Param("genre") String genre, @Param("deviceId") String deviceId);
 
-    @Query("SELECT new com.ReadMe.demo.dto.RecFileDto(f.id, f.title, f.uri, f.path, f.aiGenre, f.aiKeywords, f.progress, f.rating) FROM FileEntity f WHERE f.lastReadAt IS NULL AND f.deviceId = :deviceId AND f.user IS NULL ORDER BY f.rating DESC")
-    List<RecFileDto> findByLastReadAtIsNullAndDeviceIdAndUserIsNullOrderByRatingDesc(@Param("deviceId") String deviceId);
+    @Query("SELECT new com.ReadMe.demo.dto.RecFileDto(f.id, f.title, f.uri, f.path, f.aiGenre, f.aiKeywords, f.progress, f.rating) FROM FileEntity f WHERE f.lastReadAt IS NULL AND f.deviceId = :deviceId ORDER BY f.rating DESC")
+    List<RecFileDto> findByLastReadAtIsNullAndDeviceIdOrderByRatingDesc(@Param("deviceId") String deviceId);
 
-    @Query("SELECT new com.ReadMe.demo.dto.RecFileDto(f.id, f.title, f.uri, f.path, f.aiGenre, f.aiKeywords, f.progress, f.rating) FROM FileEntity f WHERE f.progress BETWEEN :min AND :max AND f.deviceId = :deviceId AND f.user IS NULL")
-    List<RecFileDto> findByProgressBetweenAndDeviceIdAndUserIsNull(@Param("min") double min, @Param("max") double max, @Param("deviceId") String deviceId);
+    @Query("SELECT new com.ReadMe.demo.dto.RecFileDto(f.id, f.title, f.uri, f.path, f.aiGenre, f.aiKeywords, f.progress, f.rating) FROM FileEntity f WHERE f.progress BETWEEN :min AND :max AND f.deviceId = :deviceId")
+    List<RecFileDto> findByProgressBetweenAndDeviceId(@Param("min") double min, @Param("max") double max, @Param("deviceId") String deviceId);
 }
