@@ -50,4 +50,8 @@ FIX_COMPACT_SOURCE_ERROR.md
 *.log
 *.swp
 .DS_Store
+
 src/main/resources/service-account.json
+
+# 데이터베이스 매뉴얼은 버전 관리에서 제외한다. (개인적으로 관리할 것)
+/src/main/resources/db/manual
