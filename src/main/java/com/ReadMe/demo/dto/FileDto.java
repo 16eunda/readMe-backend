@@ -6,7 +6,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 @Data
 @Builder
@@ -16,7 +16,7 @@ public class FileDto {
     private Long id;
     private String title;
     private String preview;
-    private LocalDateTime date;
+    private Instant date;
     private Integer rating;
     private String uri;
     private String path;
