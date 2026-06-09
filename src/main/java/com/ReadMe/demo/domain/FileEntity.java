@@ -3,6 +3,7 @@ package com.ReadMe.demo.domain;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.*;
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -48,7 +49,8 @@ public class FileEntity {
     @Column(columnDefinition = "TEXT")
     private String readingPreview; // 읽는 중 미리보기 (txt: 현재 페이지 텍스트, epub: 현재 cfi 위치)
     private String review;
-    private LocalDateTime date;
+    @Column(nullable = false)
+    private Instant date;
     private int rating;
     @Builder.Default
     private Double progress = 0.0;   // ★ 0~1 진행도 저장 (txt: 0~1, epub: cfi)
