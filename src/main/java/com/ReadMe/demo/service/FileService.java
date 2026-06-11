@@ -6,6 +6,9 @@ import com.ReadMe.demo.domain.FileType;
 import com.ReadMe.demo.domain.UserEntity;
 import com.ReadMe.demo.dto.AiInfoResponse;
 import com.ReadMe.demo.dto.FileDto;
+import com.ReadMe.demo.dto.FileLocationResponse;
+import com.ReadMe.demo.exception.FileNotFoundException;
+import com.ReadMe.demo.exception.UnauthorizedException;
 import com.ReadMe.demo.repository.FileReadLogRepository;
 import com.ReadMe.demo.repository.FileRepository;
 import com.ReadMe.demo.security.CustomUserDetails;
@@ -110,25 +113,8 @@ public class FileService {
     // 파일조회
     // 경로로 조회 (로그인/게스트 모두 지원, 페이징/정렬)
     public Page<FileDto> getFilesByPath(String path, String deviceId, String userId, int page, int size, String sort) {
-        String[] sortParams = sort.split(",");
-        String property = sortParams[0];
-
-        Sort.Direction direction = Sort.Direction.DESC;
-        if (sortParams.length > 1 && sortParams[1].equalsIgnoreCase("asc")) {
-            direction = Sort.Direction.ASC;
-        }
-
-        Sort sortObj;
-        if (property.equals("rating")) {
-            Sort.Order ratingOrder = direction == Sort.Direction.ASC
-                    ? Sort.Order.asc("rating")
-                    : Sort.Order.desc("rating");
-            sortObj = Sort.by(ratingOrder, Sort.Order.desc("date"));
-        } else {
-             sortObj = Sort.by(direction, property);
-        }
-
-        Pageable pageable = PageRequest.of(page, size, sortObj);
+        SortSpec sortSpec = parseSort(sort);
+        Pageable pageable = PageRequest.of(page, size, sortSpec.toSort());
 
         // userId가 있으면 userId로 조회 (로그인 상태)
         if (userId != null && !userId.isEmpty()) {
@@ -147,6 +133,117 @@ public class FileService {
         }
 
         return Page.empty(pageable);
+    }
+
+    @Transactional(readOnly = true)
+    public FileLocationResponse findLocation(
+            Long fileId,
+            String sort,
+            int size,
+            String deviceId,
+            Authentication authentication
+    ) {
+        if (size < 1 || size > 100) {
+            throw new IllegalArgumentException("size는 1 이상 100 이하여야 합니다.");
+        }
+
+        SortSpec sortSpec = parseSort(sort);
+        Long userId = extractUserId(authentication);
+        FileEntity target;
+        long absoluteIndex;
+
+        if (userId != null) {
+            target = fileRepository.findByIdAndUserId(fileId, userId)
+                    .orElseThrow(() -> new FileNotFoundException(fileId));
+            absoluteIndex = countFilesBefore(target, sortSpec, userId, null);
+        } else if (deviceId != null && !deviceId.isBlank()) {
+            target = fileRepository.findByIdAndDeviceId(fileId, deviceId)
+                    .orElseThrow(() -> new FileNotFoundException(fileId));
+            absoluteIndex = countFilesBefore(target, sortSpec, null, deviceId);
+        } else {
+            throw new UnauthorizedException("인증 정보 없음");
+        }
+
+        long pageLong = absoluteIndex / size;
+        if (pageLong > Integer.MAX_VALUE) {
+            throw new IllegalStateException("계산된 페이지 번호가 너무 큽니다.");
+        }
+
+        int page = (int) pageLong;
+        int indexInPage = (int) (absoluteIndex % size);
+        Pageable pageable = PageRequest.of(page, size, sortSpec.toSort());
+        Page<FileDto> targetPage = userId != null
+                ? fileRepository.findByPathAndUserId(target.getPath(), userId, pageable)
+                : fileRepository.findByPathAndDeviceId(target.getPath(), deviceId, pageable);
+
+        return FileLocationResponse.builder()
+                .fileId(target.getId())
+                .path(target.getPath())
+                .page(page)
+                .indexInPage(indexInPage)
+                .absoluteIndex(absoluteIndex)
+                .size(size)
+                .sort(sortSpec.normalized())
+                .content(targetPage.getContent())
+                .hasPrevious(targetPage.hasPrevious())
+                .hasNext(targetPage.hasNext())
+                .build();
+    }
+
+    private long countFilesBefore(FileEntity target, SortSpec sortSpec, Long userId, String deviceId) {
+        return switch (sortSpec.normalized()) {
+            case "date,desc" -> userId != null
+                    ? fileRepository.countBeforeDateDescByUserId(target.getPath(), userId, target.getDate(), target.getId())
+                    : fileRepository.countBeforeDateDescByDeviceId(target.getPath(), deviceId, target.getDate(), target.getId());
+            case "date,asc" -> userId != null
+                    ? fileRepository.countBeforeDateAscByUserId(target.getPath(), userId, target.getDate(), target.getId())
+                    : fileRepository.countBeforeDateAscByDeviceId(target.getPath(), deviceId, target.getDate(), target.getId());
+            case "rating,desc" -> userId != null
+                    ? fileRepository.countBeforeRatingDescByUserId(target.getPath(), userId, target.getRating(), target.getId())
+                    : fileRepository.countBeforeRatingDescByDeviceId(target.getPath(), deviceId, target.getRating(), target.getId());
+            case "rating,asc" -> userId != null
+                    ? fileRepository.countBeforeRatingAscByUserId(target.getPath(), userId, target.getRating(), target.getId())
+                    : fileRepository.countBeforeRatingAscByDeviceId(target.getPath(), deviceId, target.getRating(), target.getId());
+            default -> throw new IllegalArgumentException("지원하지 않는 정렬 조건입니다.");
+        };
+    }
+
+    private Long extractUserId(Authentication authentication) {
+        if (authentication != null && authentication.isAuthenticated()
+                && authentication.getPrincipal() instanceof CustomUserDetails details) {
+            return details.getUserId();
+        }
+        return null;
+    }
+
+    private SortSpec parseSort(String sort) {
+        if (sort == null) {
+            throw new IllegalArgumentException("sort가 필요합니다.");
+        }
+
+        String[] parts = sort.trim().toLowerCase().split(",");
+        if (parts.length != 2
+                || (!parts[0].equals("date") && !parts[0].equals("rating"))
+                || (!parts[1].equals("asc") && !parts[1].equals("desc"))) {
+            throw new IllegalArgumentException(
+                    "sort는 date,asc|desc 또는 rating,asc|desc 형식이어야 합니다."
+            );
+        }
+
+        return new SortSpec(parts[0], Sort.Direction.fromString(parts[1]));
+    }
+
+    private record SortSpec(String property, Sort.Direction direction) {
+        private Sort toSort() {
+            return Sort.by(
+                    new Sort.Order(direction, property),
+                    new Sort.Order(direction, "id")
+            );
+        }
+
+        private String normalized() {
+            return property + "," + direction.name().toLowerCase();
+        }
     }
 
     // 파일 검색

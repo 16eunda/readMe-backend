@@ -1,6 +1,7 @@
 package com.ReadMe.demo.controller;
 
 import com.ReadMe.demo.dto.FileDeleteRequest;
+import com.ReadMe.demo.dto.FileLocationResponse;
 import com.ReadMe.demo.exception.UnauthorizedException;
 import com.ReadMe.demo.service.FileService;
 import com.ReadMe.demo.domain.FileEntity;
@@ -53,6 +54,17 @@ public class FileController {
         }
 
         return fileService.getFilesByPath(path, deviceId, userId, page, size, sort);
+    }
+
+    @GetMapping("/{fileId}/location")
+    public FileLocationResponse getFileLocation(
+            @PathVariable Long fileId,
+            @RequestParam(defaultValue = "date,desc") String sort,
+            @RequestParam(defaultValue = "15") int size,
+            @RequestHeader(value = "X-Device-Id", required = false) String deviceId,
+            Authentication authentication
+    ) {
+        return fileService.findLocation(fileId, sort, size, deviceId, authentication);
     }
 
     // 검색 엔드포인트 추가
