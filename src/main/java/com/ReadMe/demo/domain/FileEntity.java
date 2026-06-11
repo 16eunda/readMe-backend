@@ -23,7 +23,12 @@ import java.util.List;
             @Index(name = "idx_file_path", columnList = "path"),
 
             // user_id 기준 조회용 (특정 유저의 파일 목록 불러올 때)
-            @Index(name = "idx_file_user", columnList = "user_id")
+            @Index(name = "idx_file_user", columnList = "user_id"),
+
+            @Index(name = "idx_file_user_path_date_id", columnList = "user_id, path, date, id"),
+            @Index(name = "idx_file_user_path_rating_id", columnList = "user_id, path, rating, id"),
+            @Index(name = "idx_file_device_path_date_id", columnList = "device_id, path, date, id"),
+            @Index(name = "idx_file_device_path_rating_id", columnList = "device_id, path, rating, id")
         }
 )
 @NoArgsConstructor

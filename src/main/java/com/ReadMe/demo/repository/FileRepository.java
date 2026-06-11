@@ -15,6 +15,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.util.List;
+import java.util.Optional;
 
 public interface FileRepository extends JpaRepository<FileEntity, Long> {
     // 파일 경로로 조회
@@ -46,6 +47,90 @@ public interface FileRepository extends JpaRepository<FileEntity, Long> {
             @Param("path") String path,
             @Param("userId") Long userId,
             Pageable pageable
+    );
+
+    Optional<FileEntity> findByIdAndUserId(Long id, Long userId);
+
+    Optional<FileEntity> findByIdAndDeviceId(Long id, String deviceId);
+
+    @Query("""
+        SELECT COUNT(f) FROM FileEntity f
+        WHERE f.path = :path AND f.user.id = :userId
+        AND (f.date > :date OR (f.date = :date AND f.id > :id))
+    """)
+    long countBeforeDateDescByUserId(
+            @Param("path") String path, @Param("userId") Long userId,
+            @Param("date") java.time.Instant date, @Param("id") Long id
+    );
+
+    @Query("""
+        SELECT COUNT(f) FROM FileEntity f
+        WHERE f.path = :path AND f.user.id = :userId
+        AND (f.date < :date OR (f.date = :date AND f.id < :id))
+    """)
+    long countBeforeDateAscByUserId(
+            @Param("path") String path, @Param("userId") Long userId,
+            @Param("date") java.time.Instant date, @Param("id") Long id
+    );
+
+    @Query("""
+        SELECT COUNT(f) FROM FileEntity f
+        WHERE f.path = :path AND f.user.id = :userId
+        AND (f.rating > :rating OR (f.rating = :rating AND f.id > :id))
+    """)
+    long countBeforeRatingDescByUserId(
+            @Param("path") String path, @Param("userId") Long userId,
+            @Param("rating") int rating, @Param("id") Long id
+    );
+
+    @Query("""
+        SELECT COUNT(f) FROM FileEntity f
+        WHERE f.path = :path AND f.user.id = :userId
+        AND (f.rating < :rating OR (f.rating = :rating AND f.id < :id))
+    """)
+    long countBeforeRatingAscByUserId(
+            @Param("path") String path, @Param("userId") Long userId,
+            @Param("rating") int rating, @Param("id") Long id
+    );
+
+    @Query("""
+        SELECT COUNT(f) FROM FileEntity f
+        WHERE f.path = :path AND f.deviceId = :deviceId
+        AND (f.date > :date OR (f.date = :date AND f.id > :id))
+    """)
+    long countBeforeDateDescByDeviceId(
+            @Param("path") String path, @Param("deviceId") String deviceId,
+            @Param("date") java.time.Instant date, @Param("id") Long id
+    );
+
+    @Query("""
+        SELECT COUNT(f) FROM FileEntity f
+        WHERE f.path = :path AND f.deviceId = :deviceId
+        AND (f.date < :date OR (f.date = :date AND f.id < :id))
+    """)
+    long countBeforeDateAscByDeviceId(
+            @Param("path") String path, @Param("deviceId") String deviceId,
+            @Param("date") java.time.Instant date, @Param("id") Long id
+    );
+
+    @Query("""
+        SELECT COUNT(f) FROM FileEntity f
+        WHERE f.path = :path AND f.deviceId = :deviceId
+        AND (f.rating > :rating OR (f.rating = :rating AND f.id > :id))
+    """)
+    long countBeforeRatingDescByDeviceId(
+            @Param("path") String path, @Param("deviceId") String deviceId,
+            @Param("rating") int rating, @Param("id") Long id
+    );
+
+    @Query("""
+        SELECT COUNT(f) FROM FileEntity f
+        WHERE f.path = :path AND f.deviceId = :deviceId
+        AND (f.rating < :rating OR (f.rating = :rating AND f.id < :id))
+    """)
+    long countBeforeRatingAscByDeviceId(
+            @Param("path") String path, @Param("deviceId") String deviceId,
+            @Param("rating") int rating, @Param("id") Long id
     );
 
     // 추가: userId와 id 리스트로 파일 삭제 (보안 필터링)
