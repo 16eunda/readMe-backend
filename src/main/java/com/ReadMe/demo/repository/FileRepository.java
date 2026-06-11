@@ -5,6 +5,7 @@ import com.ReadMe.demo.domain.FileType;
 import com.ReadMe.demo.domain.UserEntity;
 import com.ReadMe.demo.dto.FileDto;
 import com.ReadMe.demo.dto.FileGenreKeywordDto;
+import com.ReadMe.demo.dto.HistoryFileDto;
 import com.ReadMe.demo.dto.RecFileDto;
 import jakarta.transaction.Transactional;
 import org.springframework.data.domain.Page;
@@ -210,27 +211,27 @@ public interface FileRepository extends JpaRepository<FileEntity, Long> {
     // deviceId별 최근 읽은 파일
     List<FileEntity> findTop50ByDeviceIdAndLastReadAtIsNotNullOrderByLastReadAtDesc(String deviceId);
 
-    // ===== 히스토리용 - @Lob 제외하고 필요한 컬럼만 조회 =====
+    // ===== 히스토리용 =====
 
     @Query("""
-        SELECT new com.ReadMe.demo.dto.FileDto(
-            f.id, f.title, f.preview, f.date, f.rating, f.uri, f.path, f.review, f.progress, f.epubCfi, f.anchorRatio, f.readingPreview
+        SELECT new com.ReadMe.demo.dto.HistoryFileDto(
+            f.id, f.title, f.lastReadAt, f.rating, f.uri
         )
         FROM FileEntity f
         WHERE f.user.id = :userId AND f.lastReadAt IS NOT NULL
         ORDER BY f.lastReadAt DESC
     """)
-    List<FileDto> findRecentFileDtosByUserId(@Param("userId") Long userId, Pageable pageable);
+    List<HistoryFileDto> findRecentFileDtosByUserId(@Param("userId") Long userId, Pageable pageable);
 
     @Query("""
-        SELECT new com.ReadMe.demo.dto.FileDto(
-            f.id, f.title, f.preview, f.date, f.rating, f.uri, f.path, f.review, f.progress, f.epubCfi, f.anchorRatio, f.readingPreview
+        SELECT new com.ReadMe.demo.dto.HistoryFileDto(
+            f.id, f.title, f.lastReadAt, f.rating, f.uri
         )
         FROM FileEntity f
         WHERE f.deviceId = :deviceId AND f.lastReadAt IS NOT NULL
         ORDER BY f.lastReadAt DESC
     """)
-    List<FileDto> findRecentFileDtosByDeviceId(@Param("deviceId") String deviceId, Pageable pageable);
+    List<HistoryFileDto> findRecentFileDtosByDeviceId(@Param("deviceId") String deviceId, Pageable pageable);
 
     // AI 장르가 있는 파일 수 (이미 분석된 파일이 있는지 확인용)
     FileEntity findFirstByNormalizedTitleAndAiGenreIsNotNullAndIdNot(

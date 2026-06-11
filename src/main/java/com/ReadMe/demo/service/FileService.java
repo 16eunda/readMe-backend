@@ -7,6 +7,7 @@ import com.ReadMe.demo.domain.UserEntity;
 import com.ReadMe.demo.dto.AiInfoResponse;
 import com.ReadMe.demo.dto.FileDto;
 import com.ReadMe.demo.dto.FileLocationResponse;
+import com.ReadMe.demo.dto.HistoryFileDto;
 import com.ReadMe.demo.exception.FileNotFoundException;
 import com.ReadMe.demo.exception.UnauthorizedException;
 import com.ReadMe.demo.repository.FileReadLogRepository;
@@ -149,19 +150,13 @@ public class FileService {
 
         SortSpec sortSpec = parseSort(sort);
         Long userId = extractUserId(authentication);
-        FileEntity target;
+        FileEntity target = findOwnedFile(fileId, userId, deviceId);
         long absoluteIndex;
 
         if (userId != null) {
-            target = fileRepository.findByIdAndUserId(fileId, userId)
-                    .orElseThrow(() -> new FileNotFoundException(fileId));
             absoluteIndex = countFilesBefore(target, sortSpec, userId, null);
-        } else if (deviceId != null && !deviceId.isBlank()) {
-            target = fileRepository.findByIdAndDeviceId(fileId, deviceId)
-                    .orElseThrow(() -> new FileNotFoundException(fileId));
-            absoluteIndex = countFilesBefore(target, sortSpec, null, deviceId);
         } else {
-            throw new UnauthorizedException("인증 정보 없음");
+            absoluteIndex = countFilesBefore(target, sortSpec, null, deviceId);
         }
 
         long pageLong = absoluteIndex / size;
@@ -188,6 +183,24 @@ public class FileService {
                 .hasPrevious(targetPage.hasPrevious())
                 .hasNext(targetPage.hasNext())
                 .build();
+    }
+
+    @Transactional
+    public void recordRead(Long fileId, String deviceId, Authentication authentication) {
+        FileEntity file = findOwnedFile(fileId, extractUserId(authentication), deviceId);
+        file.setLastReadAt(LocalDateTime.now());
+    }
+
+    private FileEntity findOwnedFile(Long fileId, Long userId, String deviceId) {
+        if (userId != null) {
+            return fileRepository.findByIdAndUserId(fileId, userId)
+                    .orElseThrow(() -> new FileNotFoundException(fileId));
+        }
+        if (deviceId != null && !deviceId.isBlank()) {
+            return fileRepository.findByIdAndDeviceId(fileId, deviceId)
+                    .orElseThrow(() -> new FileNotFoundException(fileId));
+        }
+        throw new UnauthorizedException("인증 정보 없음");
     }
 
     private long countFilesBefore(FileEntity target, SortSpec sortSpec, Long userId, String deviceId) {
@@ -360,9 +373,6 @@ public class FileService {
         // 완독 여부 업데이트
         file.setCompleted(completed);
 
-        // 읽은 시점 기록
-        file.setLastReadAt(LocalDateTime.now());
-
         // 👇 미분석 파일이면 프리미엄 유저일 때 큐에 분석 요청
         if (!"DONE".equals(file.getAnalysisStatus()) && !"QUEUED".equals(file.getAnalysisStatus())
                 && !"PROCESSING".equals(file.getAnalysisStatus())) {
@@ -410,12 +420,12 @@ public class FileService {
     }
 
     // 최근 읽은 파일 조회 (히스토리)
-    public List<FileDto> getRecentFilesByUserId(Long userId) {
+    public List<HistoryFileDto> getRecentFilesByUserId(Long userId) {
         return fileRepository.findRecentFileDtosByUserId(userId, org.springframework.data.domain.PageRequest.of(0, 50));
     }
 
     // 최근 읽은 파일 조회 (히스토리, 게스트용)
-    public List<FileDto> getRecentFilesByDeviceId(String deviceId) {
+    public List<HistoryFileDto> getRecentFilesByDeviceId(String deviceId) {
         return fileRepository.findRecentFileDtosByDeviceId(deviceId, org.springframework.data.domain.PageRequest.of(0, 50));
     }
 
