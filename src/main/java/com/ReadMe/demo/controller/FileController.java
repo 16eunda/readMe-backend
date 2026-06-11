@@ -2,6 +2,7 @@ package com.ReadMe.demo.controller;
 
 import com.ReadMe.demo.dto.FileDeleteRequest;
 import com.ReadMe.demo.dto.FileLocationResponse;
+import com.ReadMe.demo.dto.HistoryFileDto;
 import com.ReadMe.demo.exception.UnauthorizedException;
 import com.ReadMe.demo.service.FileService;
 import com.ReadMe.demo.domain.FileEntity;
@@ -108,9 +109,19 @@ public class FileController {
         return FileDto.from(fileService.getFileById(id));
     }
 
+    // 리더 진입 시 최근 읽은 시각 갱신
+    @PostMapping("/{fileId}/read")
+    public void recordRead(
+            @PathVariable Long fileId,
+            @RequestHeader(value = "X-Device-Id", required = false) String deviceId,
+            Authentication authentication
+    ) {
+        fileService.recordRead(fileId, deviceId, authentication);
+    }
+
     // 히스토리 조회 (프론트에서 사용)
     @GetMapping("/history")
-    public List<FileDto> getRecentFiles(
+    public List<HistoryFileDto> getRecentFiles(
             @RequestHeader(value = "X-Device-Id", required = false) String deviceId,
             Authentication authentication
     ) {
@@ -118,9 +129,8 @@ public class FileController {
         if (authentication != null && authentication.isAuthenticated()) {
             Long userId = ((CustomUserDetails) authentication.getPrincipal()).getUserId();
             System.out.println("📁 최근 파일 조회 - userId: " + userId);
-            List<FileDto> recentFiles = null;
             try {
-                recentFiles = fileService.getRecentFilesByUserId(userId);
+                List<HistoryFileDto> recentFiles = fileService.getRecentFilesByUserId(userId);
                 System.out.println("✅ 최근 파일 조회 성공 - " + recentFiles.size() + "개 파일 반환");
                 return recentFiles;
             } catch (Exception e) {
@@ -131,7 +141,7 @@ public class FileController {
         } else if (deviceId != null && !deviceId.isEmpty()) {
             try {
                 System.out.println("📁 최근 파일 조회 - deviceId: " + deviceId);
-                List<FileDto> recentFiles = fileService.getRecentFilesByDeviceId(deviceId);
+                List<HistoryFileDto> recentFiles = fileService.getRecentFilesByDeviceId(deviceId);
                 System.out.println("✅ 최근 파일 조회 성공 - " + recentFiles.size() + "개 파일 반환");
                 return recentFiles;
             } catch (Exception e) {
