@@ -51,7 +51,14 @@ public class FileService {
     public FileEntity saveFile(FileEntity file, String deviceId, Authentication authentication) {
         System.out.println("=== Received From RN ===");
         System.out.println(file);
+        if (deviceId == null || deviceId.isBlank()) {
+            throw new IllegalArgumentException("X-Device-Id 헤더가 필요합니다.");
+        }
+
         String title = file.getTitle();
+        if (title == null || title.isBlank() || file.getPath() == null || file.getPath().isBlank()) {
+            throw new IllegalArgumentException("파일 제목과 경로가 필요합니다.");
+        }
         // 정규화된 제목 설정
         String normalized = normalizeTitle(title);
         file.setNormalizedTitle(normalized);
@@ -63,52 +70,54 @@ public class FileService {
             file.setType(FileType.TXT);
         } else if (ext.equalsIgnoreCase("epub")) {
             file.setType(FileType.EPUB);
+        } else {
+            throw new IllegalArgumentException("txt 또는 epub 파일만 등록할 수 있습니다.");
         }
 
-        // 완료 여부 초기값 false
+        // AI 후처리가 실패해도 소유권과 기본 상태가 완성된 파일은 남긴다.
         file.setCompleted(false);
+        file.setDeviceId(deviceId);
+        file.setAnalysisStatus("PENDING");
 
-        // 일단 파일 정보 먼저 저장 (AI 분석 결과는 나중에 업데이트)
-        FileEntity saved = fileRepository.save(file);
-        saved.setDeviceId(deviceId);
-
-        // 로그인 상태면 userId도 저
+        // 로그인 상태면 userId도 저장
         if (authentication != null && authentication.isAuthenticated()
                 && authentication.getPrincipal() instanceof CustomUserDetails) {
             UserEntity user = ((CustomUserDetails) authentication.getPrincipal()).getUser();
-            saved.setUser(user);
+            file.setUser(user);
         }
 
-        // 중복 체크: 같은 normalizedTitle로 이미 분석된 책이 있는지
-        FileEntity existing = fileRepository.findFirstByNormalizedTitleAndAiGenreIsNotNullAndIdNot(normalized, saved.getId());
+        // 완성된 기본 상태로 먼저 등록한다. 중복 여부는 /files/check에서 안내만 한다.
+        FileEntity saved = fileRepository.saveAndFlush(file);
 
-        if (existing != null) {
-            // 기존 AI 결과 복사 (무료! API 호출 없음)
-            saved.setAiGenre(existing.getAiGenre());
-            saved.setAiKeywords(existing.getAiKeywords());
-            saved.setAiMood(existing.getAiMood());
-            saved.setAiSummary(existing.getAiSummary());
-            saved.setAiTarget(existing.getAiTarget());
-            saved.setAiAnalyzedAt(LocalDateTime.now());
-            saved.setAnalysisStatus("DONE");
-            System.out.println("♻️ 기존 AI 분석 결과 복사 완료: " + normalized);
-        } else {
-            // 프리미엄 유저면 큐에 분석 요청
-            if (subscriptionService.isPremium(saved.getUser(), deviceId)) {
+        try {
+            // 같은 제목의 기존 분석 결과는 사용자/기기와 무관하게 재사용한다.
+            FileEntity existing = fileRepository.findFirstByNormalizedTitleAndAiGenreIsNotNullAndIdNot(
+                    normalized, saved.getId()
+            );
+
+            if (existing != null) {
+                saved.setAiGenre(existing.getAiGenre());
+                saved.setAiKeywords(existing.getAiKeywords());
+                saved.setAiMood(existing.getAiMood());
+                saved.setAiSummary(existing.getAiSummary());
+                saved.setAiTarget(existing.getAiTarget());
+                saved.setAiAnalyzedAt(LocalDateTime.now());
+                saved.setAnalysisStatus("DONE");
+                System.out.println("♻️ 기존 AI 분석 결과 복사 완료: " + normalized);
+            } else if (subscriptionService.isPremium(saved.getUser(), deviceId)) {
                 saved.setAnalysisStatus("QUEUED");
                 fileRepository.save(saved);
                 queueService.enqueue(saved.getId());
                 System.out.println("🤖 프리미엄 유저 → AI 분석 큐 등록: " + normalized);
             } else {
-                // 비프리미엄 → 분석 대기 (나중에 프리미엄 되면 분석)
-                saved.setAnalysisStatus("PENDING");
                 System.out.println("⏸️ 비프리미엄 → AI 분석 대기: " + normalized);
             }
+        } catch (RuntimeException e) {
+            saved.setAnalysisStatus("FAILED");
+            System.out.println("❌ 파일 등록 후 AI 후처리 실패: " + e.getMessage());
         }
 
-        saved = fileRepository.save(saved);
-
-        return saved;
+        return fileRepository.save(saved);
     }
 
     // 파일조회
@@ -415,18 +424,21 @@ public class FileService {
     }
 
     // 중복 여부 판단
-    public boolean isDuplicate(String title, String path) {
-        return fileRepository.existsByTitleAndPath(title, path);
+    public boolean isDuplicate(String deviceId, String title, String path) {
+        if (deviceId == null || deviceId.isBlank()) {
+            throw new IllegalArgumentException("X-Device-Id 헤더가 필요합니다.");
+        }
+        return fileRepository.existsByDeviceIdAndTitleAndPath(deviceId, title, path);
     }
 
     // 최근 읽은 파일 조회 (히스토리)
     public List<HistoryFileDto> getRecentFilesByUserId(Long userId) {
-        return fileRepository.findRecentFileDtosByUserId(userId, org.springframework.data.domain.PageRequest.of(0, 50));
+        return fileRepository.findRecentFileDtosByUserId(userId, org.springframework.data.domain.PageRequest.of(0, 100));
     }
 
     // 최근 읽은 파일 조회 (히스토리, 게스트용)
     public List<HistoryFileDto> getRecentFilesByDeviceId(String deviceId) {
-        return fileRepository.findRecentFileDtosByDeviceId(deviceId, org.springframework.data.domain.PageRequest.of(0, 50));
+        return fileRepository.findRecentFileDtosByDeviceId(deviceId, org.springframework.data.domain.PageRequest.of(0, 100));
     }
 
 }

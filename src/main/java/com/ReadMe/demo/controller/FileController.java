@@ -168,9 +168,10 @@ public class FileController {
     @GetMapping("/check")
     public ResponseEntity<Map<String, Boolean>> checkDuplicate(
             @RequestParam String title,
-            @RequestParam String path
+            @RequestParam String path,
+            @RequestHeader(value = "X-Device-Id") String deviceId
     ) {
-        boolean exists = fileService.isDuplicate(title, path);
+        boolean exists = fileService.isDuplicate(deviceId, title, path);
         return ResponseEntity.ok(Map.of("exists", exists));
     }
 

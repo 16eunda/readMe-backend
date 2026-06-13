@@ -140,8 +140,8 @@ public interface FileRepository extends JpaRepository<FileEntity, Long> {
     // deviceId와 id 리스트로 파일 삭제
     void deleteByDeviceIdAndIdIn(String deviceId, List<Long> ids);
 
-    // 중복 확인
-    Boolean existsByTitleAndPath(String title, String path);
+    // 같은 기기 내 중복 확인
+    boolean existsByDeviceIdAndTitleAndPath(String deviceId, String title, String path);
 
     // 최근 읽은 파일 (히스토리)
     List<FileEntity> findTop50ByLastReadAtIsNotNullOrderByLastReadAtDesc();
