@@ -12,9 +12,6 @@ import java.util.List;
 @Getter
 @Table(
         name = "files",
-        uniqueConstraints = {
-                @UniqueConstraint(columnNames = {"title", "path"})
-        },
         indexes = {
             // 핵심! 지금 쿼리를 빠르게 하는 복합 인덱스
             @Index(name = "idx_file_device_user", columnList = "device_id, user_id"),
