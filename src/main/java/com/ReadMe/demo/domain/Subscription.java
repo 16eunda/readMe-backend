@@ -6,7 +6,7 @@ import com.ReadMe.demo.domain.enums.SubscriptionStatus;
 import lombok.Getter;
 import lombok.Setter;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 @Entity
 @Table(name = "subscriptions", indexes = {
@@ -29,9 +29,10 @@ public class Subscription {
     private Platform platform;
 
     private String planType;
+    private String productId;
 
-    private LocalDateTime startedAt;
-    private LocalDateTime expiresAt;
+    private Instant startedAt;
+    private Instant expiresAt;
 
     @Enumerated(EnumType.STRING)
     private SubscriptionStatus status;
@@ -41,11 +42,11 @@ public class Subscription {
     @Column(columnDefinition = "TEXT")
     private String receipt;
 
+    @Column(unique = true)
     private String purchaseToken;
     private String originalTransactionId;
 
-    private LocalDateTime createdAt;
-    private LocalDateTime updatedAt;
+    private Instant createdAt;
+    private Instant updatedAt;
 
 }
-

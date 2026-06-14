@@ -36,5 +36,11 @@ gemini:
 jwt:
   secret: ${JWT_SECRET}
 
+google:
+  play:
+    package-name: ${GOOGLE_PLAY_PACKAGE_NAME:com.readme.app}
+    webhook-token: ${GOOGLE_PLAY_WEBHOOK_TOKEN:}
+    sync-cron: ${GOOGLE_PLAY_SYNC_CRON:0 15 3 * * *}
+
 server:
   port: ${PORT:10000}

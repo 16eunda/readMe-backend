@@ -5,27 +5,23 @@ import com.ReadMe.demo.domain.UserEntity;
 import com.ReadMe.demo.domain.enums.Platform;
 import com.ReadMe.demo.domain.enums.SubscriptionStatus;
 import com.ReadMe.demo.dto.GooglePubSubMessage;
+import com.ReadMe.demo.dto.GoogleSubscriptionPurchase;
 import com.ReadMe.demo.dto.SubscribeRequest;
 import com.ReadMe.demo.repository.SubscriptionRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.google.auth.oauth2.GoogleCredentials;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpMethod;
-import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestTemplate;
+import org.springframework.transaction.annotation.Transactional;
 
-import java.io.InputStream;
-import org.springframework.core.io.ClassPathResource;
-import java.time.LocalDateTime;
+import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.util.Base64;
-import java.util.List;
+import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
@@ -33,231 +29,210 @@ import java.util.Optional;
 public class SubscriptionService {
 
     private final SubscriptionRepository repo;
+    private final GooglePlaySubscriptionClient googlePlayClient;
+    private final ObjectMapper objectMapper;
 
-    // 프리미엄 여부 확인
+    @Transactional(readOnly = true)
     public boolean isPremium(UserEntity user, String deviceId) {
-
-        if (user == null && deviceId == null) {
+        if (user == null && (deviceId == null || deviceId.isBlank())) {
             return false;
         }
 
-        // 로그인 유저는 user 기준, 게스트는 deviceId 기준으로 활성 구독 조회
-        Optional<Subscription> sub = (user != null)
+        Optional<Subscription> sub = user != null
                 ? repo.findTopByUserAndStatusOrderByExpiresAtDesc(user, SubscriptionStatus.ACTIVE)
                 : repo.findTopByDeviceIdAndStatusOrderByExpiresAtDesc(deviceId, SubscriptionStatus.ACTIVE);
 
         return sub
-                .map(s -> s.getExpiresAt().isAfter(LocalDateTime.now()))
+                .map(Subscription::getExpiresAt)
+                .map(expiresAt -> expiresAt.isAfter(Instant.now()))
                 .orElse(false);
     }
 
+    @Transactional
+    public Map<String, Object> subscribe(SubscribeRequest req, UserEntity user, String deviceId) {
+        validateSubscribeRequest(req, user, deviceId);
 
-    // 구독 처리
-    // 프론트에서 영수증(receipt) 또는 구매 토큰(purchaseToken)과 함께 구독 요청
-    public Map subscribe(SubscribeRequest req, UserEntity user, String deviceId) {
-        // user/deviceId 확인 (둘 다 없으면 예외)
-        if (user == null && deviceId == null) {
-            throw new RuntimeException("유저 정보 없음");
+        GoogleSubscriptionPurchase purchase = googlePlayClient.getSubscription(req.getPurchaseToken());
+        if (!req.getProductId().equals(purchase.productId())) {
+            throw new IllegalArgumentException("구매한 상품과 요청한 상품이 일치하지 않습니다.");
+        }
+        if (!purchase.isEntitled(Instant.now())) {
+            throw new IllegalArgumentException("활성화할 수 없는 Google Play 구독입니다.");
         }
 
-        // 기존 active 구독 종료
-        if (user != null) {
-            repo.findByUserAndStatus(user, SubscriptionStatus.ACTIVE)
-                    .forEach(s -> {
-                        s.setStatus(SubscriptionStatus.EXPIRED);
-                        repo.save(s);
-                    });
-        } else {
-            repo.findByDeviceIdAndStatus(deviceId, SubscriptionStatus.ACTIVE)
-                    .forEach(s -> {
-                        s.setStatus(SubscriptionStatus.EXPIRED);
-                        repo.save(s);
-                    });
-        }
-        String transactionId = "";
-        // ios/안드로이드 구분 → 영수증/구매 토큰 검증
-        if (req.getPlatform() == Platform.IOS){
-            // 1. 애플 서버에 영수증 검증 요청
-            transactionId = verifyAppleReceipt(req.getReceipt());
-            if (transactionId.isEmpty()) throw new RuntimeException("유효하지 않은 영수증");
-        } else {
-            // 2. 구글 서버에 purchaseToken 검증
-            boolean valid = verifyGooglePurchase(req.getPurchaseToken(), req.getProductId());
-            if (!valid) throw new RuntimeException("유효하지 않은 구매");
+        Subscription subscription = repo.findByPurchaseToken(req.getPurchaseToken())
+                .map(existing -> {
+                    validateTokenOwner(existing, user, deviceId);
+                    return existing;
+                })
+                .orElseGet(Subscription::new);
+
+        if (purchase.needsAcknowledgement()) {
+            googlePlayClient.acknowledge(purchase.productId(), req.getPurchaseToken());
         }
 
-        // 3. DB에 구독 저장
-        Subscription sub = new Subscription();
-        if (user != null) {
-            sub.setUser(user);
-        } else {
-            sub.setDeviceId(deviceId);
-        }
+        expireLinkedPurchase(purchase.linkedPurchaseToken());
+        expireOtherActiveSubscriptions(user, deviceId, subscription);
 
-        // iOS는 영수증, 안드로이드는 구매 토큰 저장
-        if (req.getPlatform() == Platform.ANDROID) {
-            System.out.println("purchaseToken: " + req.getPurchaseToken());
-            sub.setPurchaseToken(req.getPurchaseToken());
-        } else {
-            sub.setReceipt(req.getReceipt());
-            sub.setOriginalTransactionId(transactionId);
-        }
+        subscription.setUser(user);
+        subscription.setDeviceId(deviceId);
+        subscription.setPlatform(Platform.ANDROID);
+        subscription.setPlanType(req.getPlanType());
+        subscription.setProductId(purchase.productId());
+        subscription.setPurchaseToken(req.getPurchaseToken());
+        applyGoogleState(subscription, purchase);
+        repo.save(subscription);
 
-        sub.setPlanType(req.getPlanType());
-        sub.setStatus(SubscriptionStatus.ACTIVE);
-        sub.setStartedAt(LocalDateTime.now());
-        sub.setExpiresAt(req.getPlanType().equals("monthly")
-                ? LocalDateTime.now().plusMonths(1)
-                : LocalDateTime.now().plusYears(1));
-        repo.save(sub);
-
-        // 4. 응답
-        return Map.of("isPremium", true);
-    }
-
-    // 애플 영수증 검증
-    private String verifyAppleReceipt(String receipt) {
-        // 애플 서버에 POST 요청
-        String url = "https://buy.itunes.apple.com/verifyReceipt"; // 프로덕션
-        // 실패하면 샌드박스로 재시도: https://sandbox.itunes.apple.com/verifyReceipt
-
-        Map<String, String> body = Map.of(
-                "receipt-data", receipt,
-                "password", "앱스토어_공유_비밀키" // App Store Connect에서 발급
+        return Map.of(
+                "isPremium", true,
+                "expiresAt", subscription.getExpiresAt(),
+                "autoRenew", subscription.getAutoRenew()
         );
-
-        // HTTP POST → 응답의 status == 0 이면 유효
-        // RestTemplate or WebClient 사용
-
-        return "test";
     }
 
-    private boolean verifyGooglePurchase(String purchaseToken, String productId) {
-        try {
-            String packageName = "com.readme.app";
-
-            String url = String.format(
-                    "https://androidpublisher.googleapis.com/androidpublisher/v3/applications/%s/purchases/subscriptions/%s/tokens/%s",
-                    packageName,
-                    productId,
-                    purchaseToken
-            );
-
-            log.info("🔍 Google 구독 검증 요청 URL: {}", url);
-            log.info("🔍 productId: {}, purchaseToken: {}", productId, purchaseToken);
-
-            HttpHeaders headers = new HttpHeaders();
-            headers.setBearerAuth(getAccessToken());
-
-            HttpEntity<String> entity = new HttpEntity<>(headers);
-
-            RestTemplate restTemplate = new RestTemplate();
-            ResponseEntity<String> response = restTemplate.exchange(
-                    url,
-                    HttpMethod.GET,
-                    entity,
-                    String.class
-            );
-
-            log.info("✅ Google API 응답: {}", response.getBody());
-
-            ObjectMapper mapper = new ObjectMapper();
-            JsonNode json = mapper.readTree(response.getBody());
-
-            // paymentState: 0=결제대기, 1=결제완료, 2=무료체험
-            // 테스트 구매는 paymentState가 없을 수도 있으므로 null 체크
-            if (json.has("paymentState")) {
-                int paymentState = json.get("paymentState").asInt();
-                log.info("💳 paymentState: {}", paymentState);
-                // 0(결제대기)도 테스트에선 허용, 실제 운영은 1만 허용
-                return paymentState == 1 || paymentState == 0;
-            }
-
-            // paymentState 필드 없으면 구글이 응답 자체를 줬다는 건 유효한 것
-            log.warn("⚠️ paymentState 필드 없음, 응답 전체: {}", response.getBody());
-            return true;
-
-        } catch (Exception e) {
-            log.error("❌ Google 구독 검증 실패 - 예외: {}", e.getMessage(), e);
-            return false;
-        }
-    }
-
-    // Google API 호출 시 필요한 액세스 토큰 발급
-    private String getAccessToken() throws Exception {
-        InputStream stream;
-
-        // Render 등 서버 환경: 환경변수에서 JSON 읽기
-        String serviceAccountJson = System.getenv("GOOGLE_SERVICE_ACCOUNT_JSON");
-        if (serviceAccountJson != null && !serviceAccountJson.isBlank()) {
-            log.info("🔑 서비스 계정: 환경변수에서 로드");
-            stream = new java.io.ByteArrayInputStream(serviceAccountJson.getBytes(java.nio.charset.StandardCharsets.UTF_8));
-        } else {
-            // 로컬 개발환경: resources/service-account.json 파일 사용
-            log.info("🔑 서비스 계정: ClassPath 파일에서 로드");
-            stream = new ClassPathResource("service-account.json").getInputStream();
-        }
-
-        GoogleCredentials credentials = GoogleCredentials
-                .fromStream(stream)
-                .createScoped(List.of("https://www.googleapis.com/auth/androidpublisher"));
-
-        credentials.refreshIfExpired();
-        return credentials.getAccessToken().getTokenValue();
-    }
-
-    // 애플 서버에서 구독 상태 변경 알림 처리
-    public void handleAppleNotification(String payload) {
-        // JWT 디코딩 → notificationType 확인
-        // SUBSCRIBED, DID_RENEW → status = ACTIVE, expiresAt 연장
-        // EXPIRED, DID_FAIL_TO_RENEW → status = EXPIRED
-        // REFUND → status = CANCELLED
-
-        // 구현 생략 (구글과 유사한 흐름)
-    }
-
-    // 구글 서버에서 구독 상태 변경 알림 처리
+    @Transactional
     public void handleGoogleNotification(GooglePubSubMessage message) {
+        String purchaseToken = extractPurchaseToken(message);
+        if (purchaseToken == null) {
+            return;
+        }
+
+        Optional<Subscription> existing = repo.findByPurchaseToken(purchaseToken);
+        if (existing.isEmpty()) {
+            log.warn("등록되지 않은 Google Play 구매 토큰의 RTDN을 무시합니다.");
+            return;
+        }
+
+        GoogleSubscriptionPurchase purchase = googlePlayClient.getSubscription(purchaseToken);
+        Subscription subscription = existing.get();
+
+        if (purchase.needsAcknowledgement() && purchase.isEntitled(Instant.now())) {
+            googlePlayClient.acknowledge(purchase.productId(), purchaseToken);
+        }
+
+        expireLinkedPurchase(purchase.linkedPurchaseToken());
+        subscription.setProductId(purchase.productId());
+        applyGoogleState(subscription, purchase);
+        repo.save(subscription);
+    }
+
+    @Transactional
+    public void synchronizeGoogleSubscription(Long subscriptionId) {
+        Subscription subscription = repo.findById(subscriptionId)
+                .orElseThrow(() -> new IllegalArgumentException("구독 정보를 찾을 수 없습니다."));
+        if (subscription.getPurchaseToken() == null
+                || subscription.getPurchaseToken().isBlank()) {
+            return;
+        }
+
+        GoogleSubscriptionPurchase purchase =
+                googlePlayClient.getSubscription(subscription.getPurchaseToken());
+        if (purchase.needsAcknowledgement() && purchase.isEntitled(Instant.now())) {
+            googlePlayClient.acknowledge(purchase.productId(), subscription.getPurchaseToken());
+        }
+        expireLinkedPurchase(purchase.linkedPurchaseToken());
+        subscription.setPlatform(Platform.ANDROID);
+        subscription.setProductId(purchase.productId());
+        applyGoogleState(subscription, purchase);
+        repo.save(subscription);
+    }
+
+    public void handleAppleNotification(String payload) {
+        throw new UnsupportedOperationException("Apple 구독 검증은 아직 지원하지 않습니다.");
+    }
+
+    private void validateSubscribeRequest(SubscribeRequest req, UserEntity user, String deviceId) {
+        if (user == null && (deviceId == null || deviceId.isBlank())) {
+            throw new IllegalArgumentException("유저 또는 X-Device-Id 정보가 필요합니다.");
+        }
+        if (req == null || req.getPlatform() == null) {
+            throw new IllegalArgumentException("결제 플랫폼이 필요합니다.");
+        }
+        if (req.getPlatform() != Platform.ANDROID) {
+            throw new UnsupportedOperationException("Apple 구독 검증은 아직 지원하지 않습니다.");
+        }
+        if (req.getPurchaseToken() == null || req.getPurchaseToken().isBlank()) {
+            throw new IllegalArgumentException("Google Play 구매 토큰이 필요합니다.");
+        }
+        if (req.getProductId() == null || req.getProductId().isBlank()) {
+            throw new IllegalArgumentException("Google Play 상품 ID가 필요합니다.");
+        }
+    }
+
+    private void validateTokenOwner(Subscription subscription, UserEntity user, String deviceId) {
+        if (subscription.getUser() != null) {
+            if (user == null || !subscription.getUser().getId().equals(user.getId())) {
+                throw new IllegalArgumentException("이미 다른 사용자에게 등록된 구매 토큰입니다.");
+            }
+            return;
+        }
+
+        if (subscription.getDeviceId() != null && !subscription.getDeviceId().equals(deviceId)) {
+            throw new IllegalArgumentException("이미 다른 기기에 등록된 구매 토큰입니다.");
+        }
+    }
+
+    private void expireOtherActiveSubscriptions(UserEntity user, String deviceId, Subscription current) {
+        Set<Subscription> activeSubscriptions = new LinkedHashSet<>();
+        if (user != null) {
+            activeSubscriptions.addAll(repo.findByUserAndStatus(user, SubscriptionStatus.ACTIVE));
+        }
+        if (deviceId != null && !deviceId.isBlank()) {
+            activeSubscriptions.addAll(repo.findByDeviceIdAndStatus(deviceId, SubscriptionStatus.ACTIVE));
+        }
+
+        activeSubscriptions.stream()
+                .filter(subscription -> subscription.getId() != null)
+                .filter(subscription -> !subscription.getId().equals(current.getId()))
+                .forEach(subscription -> subscription.setStatus(SubscriptionStatus.EXPIRED));
+    }
+
+    private void expireLinkedPurchase(String linkedPurchaseToken) {
+        if (linkedPurchaseToken == null || linkedPurchaseToken.isBlank()) {
+            return;
+        }
+
+        repo.findByPurchaseToken(linkedPurchaseToken)
+                .ifPresent(subscription -> subscription.setStatus(SubscriptionStatus.EXPIRED));
+    }
+
+    private void applyGoogleState(Subscription subscription, GoogleSubscriptionPurchase purchase) {
+        Instant now = Instant.now();
+        subscription.setStartedAt(purchase.startedAt());
+        subscription.setExpiresAt(purchase.expiresAt());
+        subscription.setAutoRenew(purchase.autoRenew());
+        subscription.setStatus(purchase.isEntitled(now)
+                ? SubscriptionStatus.ACTIVE
+                : SubscriptionStatus.EXPIRED);
+
+        if (subscription.getCreatedAt() == null) {
+            subscription.setCreatedAt(now);
+        }
+        subscription.setUpdatedAt(now);
+    }
+
+    private String extractPurchaseToken(GooglePubSubMessage message) {
         try {
-            // 1. base64 디코딩
-            String decoded = new String(
-                    Base64.getDecoder().decode(message.getMessage().getData())
-            );
-
-            // 2. JSON 파싱
-            ObjectMapper mapper = new ObjectMapper();
-            JsonNode root = mapper.readTree(decoded);
-
-            JsonNode subNoti = root.get("subscriptionNotification");
-
-            int type = subNoti.get("notificationType").asInt();
-            String purchaseToken = subNoti.get("purchaseToken").asText();
-
-            // 3. 구독 조회
-            Subscription sub = repo.findByPurchaseToken(purchaseToken)
-                    .orElseThrow(() -> new RuntimeException("구독 없음"));
-
-            // 4. 상태 변경
-            switch (type) {
-                case 1: // RENEWED
-                case 2: // PURCHASED
-                    sub.setStatus(SubscriptionStatus.ACTIVE);
-                    sub.setExpiresAt(LocalDateTime.now().plusMonths(1));
-                    break;
-
-                case 3: // CANCELED
-                    sub.setStatus(SubscriptionStatus.CANCELLED);
-                    break;
-
-                case 13: // EXPIRED
-                    sub.setStatus(SubscriptionStatus.EXPIRED);
-                    break;
+            if (message == null || message.getMessage() == null
+                    || message.getMessage().getData() == null) {
+                throw new IllegalArgumentException("Google RTDN 메시지 데이터가 없습니다.");
             }
 
-            repo.save(sub);
-
+            String decoded = new String(
+                    Base64.getDecoder().decode(message.getMessage().getData()),
+                    StandardCharsets.UTF_8
+            );
+            JsonNode root = objectMapper.readTree(decoded);
+            JsonNode notification = root.path("subscriptionNotification");
+            if (notification.isMissingNode()) {
+                log.info("구독 상태 변경이 아닌 Google RTDN 메시지를 무시합니다.");
+                return null;
+            }
+            return notification.path("purchaseToken").asText(null);
+        } catch (IllegalArgumentException e) {
+            throw e;
         } catch (Exception e) {
-            throw new RuntimeException("구글 웹훅 처리 실패", e);
+            throw new IllegalArgumentException("Google RTDN 메시지를 읽을 수 없습니다.", e);
         }
     }
 }

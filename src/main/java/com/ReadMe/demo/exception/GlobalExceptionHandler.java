@@ -3,6 +3,7 @@ package com.ReadMe.demo.exception;
 import com.ReadMe.demo.dto.ApiErrorResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
@@ -37,6 +38,22 @@ public class GlobalExceptionHandler {
                 .body(ApiErrorResponse.of(
                         "INVALID_ARGUMENT",
                         e.getMessage(),
+                        null
+                ));
+    }
+
+    @ExceptionHandler(UnsupportedOperationException.class)
+    public ResponseEntity<ApiErrorResponse> handleUnsupportedOperation(UnsupportedOperationException e) {
+        return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED)
+                .body(ApiErrorResponse.of("NOT_IMPLEMENTED", e.getMessage(), null));
+    }
+
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<ApiErrorResponse> handleDataIntegrityViolation(DataIntegrityViolationException e) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ApiErrorResponse.of(
+                        "DATA_CONFLICT",
+                        "이미 처리된 데이터이거나 현재 상태와 충돌합니다.",
                         null
                 ));
     }

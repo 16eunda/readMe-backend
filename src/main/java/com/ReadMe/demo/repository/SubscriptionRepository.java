@@ -6,7 +6,6 @@ import com.ReadMe.demo.domain.enums.SubscriptionStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 
 public interface SubscriptionRepository extends JpaRepository<Subscription, Long> {
@@ -24,4 +23,6 @@ public interface SubscriptionRepository extends JpaRepository<Subscription, Long
     List<Subscription> findByDeviceIdAndStatus(String deviceId, SubscriptionStatus subscriptionStatus);
 
     Optional<Subscription> findByPurchaseToken(String purchaseToken);
+
+    List<Subscription> findByPurchaseTokenIsNotNullAndStatus(SubscriptionStatus status);
 }

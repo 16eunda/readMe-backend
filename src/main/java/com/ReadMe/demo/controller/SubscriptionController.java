@@ -1,6 +1,5 @@
 package com.ReadMe.demo.controller;
 
-import com.ReadMe.demo.domain.Subscription;
 import com.ReadMe.demo.domain.UserEntity;
 import com.ReadMe.demo.dto.GooglePubSubMessage;
 import com.ReadMe.demo.dto.SubscribeRequest;
@@ -8,13 +7,15 @@ import com.ReadMe.demo.repository.UserRepository;
 import com.ReadMe.demo.security.CustomUserDetails;
 import com.ReadMe.demo.service.SubscriptionService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.Map;
 
 @RestController
@@ -25,6 +26,9 @@ public class SubscriptionController {
 
     private final UserRepository userRepository;
     private final SubscriptionService subscriptionService;
+
+    @Value("${google.play.webhook-token:}")
+    private String googleWebhookToken;
 
     // 프리미엄 상태 조회 엔드포인트
     @GetMapping("/status")
@@ -72,10 +76,16 @@ public class SubscriptionController {
 
     // 구글에서 구독 상태 변경 알림 받을 엔드포인트
     @PostMapping("/webhook/google")
-    public ResponseEntity<?> googleWebhook(@RequestBody GooglePubSubMessage message) {
-        // Google Pub/Sub으로 전달됨
-        // base64 디코딩 → subscriptionNotification 파싱
-        // notificationType 1 = 갱신, 3 = 취소, 13 = 만료
+    public ResponseEntity<?> googleWebhook(
+            @RequestParam String token,
+            @RequestBody GooglePubSubMessage message
+    ) {
+        if (googleWebhookToken.isBlank() || !MessageDigest.isEqual(
+                googleWebhookToken.getBytes(StandardCharsets.UTF_8),
+                token.getBytes(StandardCharsets.UTF_8)
+        )) {
+            return ResponseEntity.status(401).build();
+        }
 
         subscriptionService.handleGoogleNotification(message);
         return ResponseEntity.ok().build(); // 200 꼭 반환해야 재전송 안 함
