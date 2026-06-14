@@ -53,6 +53,13 @@ public class SubscriptionService {
         validateSubscribeRequest(req, user, deviceId);
 
         GoogleSubscriptionPurchase purchase = googlePlayClient.getSubscription(req.getPurchaseToken());
+        log.info(
+                "Google Play 구독 검증 완료. requestedProductId={}, verifiedProductId={}, state={}, acknowledgementState={}",
+                req.getProductId(),
+                purchase.productId(),
+                purchase.subscriptionState(),
+                purchase.acknowledgementState()
+        );
         if (!req.getProductId().equals(purchase.productId())) {
             throw new IllegalArgumentException("구매한 상품과 요청한 상품이 일치하지 않습니다.");
         }
@@ -99,7 +106,7 @@ public class SubscriptionService {
 
         Optional<Subscription> existing = repo.findByPurchaseToken(purchaseToken);
         if (existing.isEmpty()) {
-            log.warn("등록되지 않은 Google Play 구매 토큰의 RTDN을 무시합니다.");
+            log.info("앱 등록 API보다 먼저 도착한 Google Play 구매 RTDN입니다. 앱 등록 요청에서 처리합니다.");
             return;
         }
 

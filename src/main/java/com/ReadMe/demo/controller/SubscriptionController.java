@@ -3,15 +3,12 @@ package com.ReadMe.demo.controller;
 import com.ReadMe.demo.domain.UserEntity;
 import com.ReadMe.demo.dto.GooglePubSubMessage;
 import com.ReadMe.demo.dto.SubscribeRequest;
-import com.ReadMe.demo.repository.UserRepository;
 import com.ReadMe.demo.security.CustomUserDetails;
 import com.ReadMe.demo.service.SubscriptionService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
 import java.nio.charset.StandardCharsets;
@@ -24,7 +21,6 @@ import java.util.Map;
 public class SubscriptionController {
 
 
-    private final UserRepository userRepository;
     private final SubscriptionService subscriptionService;
 
     @Value("${google.play.webhook-token:}")
@@ -51,12 +47,10 @@ public class SubscriptionController {
     @PostMapping("/subscribe")
     public ResponseEntity<?> subscribe(
             @RequestBody SubscribeRequest request,
-            @AuthenticationPrincipal UserDetails userDetails,
+            Authentication authentication,
             @RequestHeader(value = "X-Device-Id", required = false) String deviceId
     ) {
-        UserEntity user = userDetails != null
-                ? userRepository.findByEmail(userDetails.getUsername()).orElse(null)
-                : null;
+        UserEntity user = getAuthenticatedUser(authentication);
 
         return ResponseEntity.ok(subscriptionService.subscribe(request, user, deviceId));
     }
@@ -89,5 +83,13 @@ public class SubscriptionController {
 
         subscriptionService.handleGoogleNotification(message);
         return ResponseEntity.ok().build(); // 200 꼭 반환해야 재전송 안 함
+    }
+
+    private UserEntity getAuthenticatedUser(Authentication authentication) {
+        if (authentication != null && authentication.isAuthenticated()
+                && authentication.getPrincipal() instanceof CustomUserDetails userDetails) {
+            return userDetails.getUser();
+        }
+        return null;
     }
 }
