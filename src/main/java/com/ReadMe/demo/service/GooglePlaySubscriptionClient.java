@@ -13,6 +13,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
+import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.client.RestTemplate;
 
 import java.io.InputStream;
@@ -50,10 +51,13 @@ public class GooglePlaySubscriptionClient {
             );
 
             return parsePurchase(response.getBody());
+        } catch (RestClientResponseException e) {
+            logGoogleApiError("구독 조회", e);
+            throw new IllegalStateException("Google Play 구독을 확인할 수 없습니다.", e);
         } catch (IllegalArgumentException e) {
             throw e;
         } catch (Exception e) {
-            log.error("Google Play 구독 조회 실패: {}", e.getMessage());
+            log.error("Google Play 구독 조회 실패: {}", e.getMessage(), e);
             throw new IllegalStateException("Google Play 구독을 확인할 수 없습니다.", e);
         }
     }
@@ -71,8 +75,11 @@ public class GooglePlaySubscriptionClient {
                     purchaseToken
             );
             new RestTemplate().exchange(url, HttpMethod.POST, authorizedEntity(), String.class);
+        } catch (RestClientResponseException e) {
+            logGoogleApiError("구독 승인", e);
+            throw new IllegalStateException("Google Play 구독을 승인할 수 없습니다.", e);
         } catch (Exception e) {
-            log.error("Google Play 구독 승인 실패: {}", e.getMessage());
+            log.error("Google Play 구독 승인 실패: {}", e.getMessage(), e);
             throw new IllegalStateException("Google Play 구독을 승인할 수 없습니다.", e);
         }
     }
@@ -133,5 +140,14 @@ public class GooglePlaySubscriptionClient {
 
     private Instant parseInstant(String value) {
         return value == null || value.isBlank() ? null : Instant.parse(value);
+    }
+
+    private void logGoogleApiError(String operation, RestClientResponseException e) {
+        log.error(
+                "Google Play {} 실패. status={}, response={}",
+                operation,
+                e.getStatusCode(),
+                e.getResponseBodyAsString()
+        );
     }
 }
