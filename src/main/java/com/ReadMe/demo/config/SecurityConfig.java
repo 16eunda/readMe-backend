@@ -36,6 +36,9 @@ public class SecurityConfig {
                         .requestMatchers("/h2-console/**").permitAll()
                         .requestMatchers("/ranking/**").permitAll()
                         .requestMatchers("/recommendations/**").permitAll()
+                        .requestMatchers("/subscriptions/status").permitAll()
+                        .requestMatchers("/subscriptions/subscribe").permitAll()
+                        .requestMatchers("/subscriptions/webhook/google").permitAll()
                         .anyRequest().authenticated()
                 )
                 .headers(headers -> headers
