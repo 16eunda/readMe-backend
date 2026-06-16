@@ -90,6 +90,11 @@ public class FileService {
         FileEntity saved = fileRepository.saveAndFlush(file);
 
         try {
+            if (!subscriptionService.isPremium(saved.getUser(), deviceId)) {
+                System.out.println("⏸️ 비프리미엄 → AI 분석 대기: " + normalized);
+                return fileRepository.save(saved);
+            }
+
             // 같은 제목의 기존 분석 결과는 사용자/기기와 무관하게 재사용한다.
             FileEntity existing = fileRepository.findFirstByNormalizedTitleAndAiGenreIsNotNullAndIdNot(
                     normalized, saved.getId()
@@ -104,13 +109,11 @@ public class FileService {
                 saved.setAiAnalyzedAt(LocalDateTime.now());
                 saved.setAnalysisStatus("DONE");
                 System.out.println("♻️ 기존 AI 분석 결과 복사 완료: " + normalized);
-            } else if (subscriptionService.isPremium(saved.getUser(), deviceId)) {
+            } else {
                 saved.setAnalysisStatus("QUEUED");
                 fileRepository.save(saved);
                 queueService.enqueue(saved.getId());
                 System.out.println("🤖 프리미엄 유저 → AI 분석 큐 등록: " + normalized);
-            } else {
-                System.out.println("⏸️ 비프리미엄 → AI 분석 대기: " + normalized);
             }
         } catch (RuntimeException e) {
             saved.setAnalysisStatus("FAILED");
