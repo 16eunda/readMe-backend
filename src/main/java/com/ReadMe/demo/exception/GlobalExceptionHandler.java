@@ -58,6 +58,12 @@ public class GlobalExceptionHandler {
                 ));
     }
 
+    @ExceptionHandler(PremiumRequiredException.class)
+    public ResponseEntity<ApiErrorResponse> handlePremiumRequired(PremiumRequiredException e) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(ApiErrorResponse.of("PREMIUM_REQUIRED", e.getMessage(), null));
+    }
+
     @ExceptionHandler(RuntimeException.class)
     public ResponseEntity<ApiErrorResponse> handleRuntimeException(RuntimeException e) {
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)

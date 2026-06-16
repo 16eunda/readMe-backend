@@ -29,6 +29,11 @@ public class AiAnalysisService {
         FileEntity file = fileRepository.findById(fileId)
                 .orElseThrow(() -> new RuntimeException("파일을 찾을 수 없습니다: " + fileId));
 
+        UserEntity user = extractUser(authentication);
+        if (!subscriptionService.isPremium(user, deviceId)) {
+            return AiInfoResponse.notAvailable();
+        }
+
         // 이미 분석 완료된 경우 바로 반환
         if ("DONE".equals(file.getAnalysisStatus()) && file.getAiGenre() != null) {
             return AiInfoResponse.from(file);
@@ -49,17 +54,6 @@ public class AiAnalysisService {
             file.setAnalysisStatus("DONE");
             fileRepository.save(file);
             return AiInfoResponse.from(file);
-        }
-
-        // 프리미엄 체크
-        UserEntity user = null;
-        if (authentication != null && authentication.isAuthenticated()
-                && authentication.getPrincipal() instanceof CustomUserDetails) {
-            user = ((CustomUserDetails) authentication.getPrincipal()).getUser();
-        }
-
-        if (!subscriptionService.isPremium(user, deviceId)) {
-            return AiInfoResponse.notAvailable();
         }
 
         // 프리미엄 → Gemini 직접 호출 (동기, 일일 제한 없음)
@@ -120,5 +114,13 @@ public class AiAnalysisService {
         fileRepository.save(file);
 
         return AiInfoResponse.from(file);
+    }
+
+    private UserEntity extractUser(Authentication authentication) {
+        if (authentication != null && authentication.isAuthenticated()
+                && authentication.getPrincipal() instanceof CustomUserDetails userDetails) {
+            return userDetails.getUser();
+        }
+        return null;
     }
 }

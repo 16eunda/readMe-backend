@@ -6,6 +6,7 @@ import com.ReadMe.demo.dto.RecommendationResponse;
 import com.ReadMe.demo.repository.FileRepository;
 import com.ReadMe.demo.repository.RecRepository;
 import com.ReadMe.demo.security.CustomUserDetails;
+import com.ReadMe.demo.domain.UserEntity;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
@@ -21,6 +22,7 @@ import java.util.stream.Collectors;
 public class RecService {
     private final RecRepository recRepository;
     private final FileRepository fileRepository;
+    private final SubscriptionService subscriptionService;
 
     private static final int GENRE_BASED_LIMIT = 3;
     private static final int MAX_RECOMMENDATIONS = 5;
@@ -33,7 +35,12 @@ public class RecService {
      */
     public RecommendationResponse getRecommendations(Authentication authentication, String deviceId) {
         try {
-            Long userId = extractUserId(authentication);
+            UserEntity user = extractUser(authentication);
+            Long userId = user != null ? user.getId() : null;
+
+            if (!subscriptionService.isPremium(user, deviceId)) {
+                return RecommendationResponse.premiumRequired();
+            }
 
             if (userId != null) {
                 return buildRecommendations(userId, null);
@@ -335,10 +342,10 @@ public class RecService {
         return Optional.ofNullable(genre);
     }
 
-    private Long extractUserId(Authentication authentication) {
+    private UserEntity extractUser(Authentication authentication) {
         if (authentication != null && authentication.isAuthenticated()
                 && authentication.getPrincipal() instanceof CustomUserDetails d) {
-            return d.getUserId();
+            return d.getUser();
         }
         return null;
     }
