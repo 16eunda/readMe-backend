@@ -39,18 +39,10 @@ public class RankingController {
 
         UserEntity user = extractUser(authentication);
 
-        // 로그 남기기
-        System.out.println("month1 : " + isCustomMonth(year, month, today));
-        System.out.println("month2 : " + subscriptionService.isPremium(user, deviceId));
-
         // 유료기능이지만 프리미엄이 아닌 경우 예외 발생
         if (isCustomMonth(year, month, today) && !subscriptionService.isPremium(user, deviceId)) {
             throw new PremiumRequiredException();
         }
-
-        // 로그 남기기
-        System.out.println("month1 : " + isCustomMonth(year, month, today));
-        System.out.println("month2 : " + subscriptionService.isPremium(user, deviceId));
 
         // 로그인한 사용자면 userId 기준으로 랭킹 조회
         if(user != null) {
