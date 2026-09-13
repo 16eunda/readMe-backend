@@ -44,6 +44,13 @@ public class AiInfoResponse {
                 .build();
     }
 
+    // 분석 실패 (재시도 가능)
+    public static AiInfoResponse failed() {
+        return AiInfoResponse.builder()
+                .analysisStatus("FAILED")
+                .build();
+    }
+
     // 프리미엄 필요
     public static AiInfoResponse notAvailable() {
         return AiInfoResponse.builder()

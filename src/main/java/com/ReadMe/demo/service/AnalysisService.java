@@ -60,19 +60,24 @@ public class AnalysisService {
                 return;
             }
 
-            // 같은 제목의 이미 분석된 파일 있으면 복사 (API 호출 없음, 횟수 차감 없음)
-            FileEntity existing = fileRepository
-                    .findFirstByNormalizedTitleAndAiGenreIsNotNullAndIdNot(
-                            file.getNormalizedTitle(), file.getId());
+            // 같은 제목의 이미 분석된 "본인" 파일 있으면 복사 (API 호출 없음, 횟수 차감 없음)
+            FileEntity existing = fileRepository.findOwnAnalyzedSameTitle(
+                    file.getNormalizedTitle(),
+                    file.getId(),
+                    user != null ? user.getId() : null,
+                    deviceId
+            );
 
             if (existing != null) {
                 copyAnalysis(file, existing);
                 fileRepository.save(file);
-                log.info("♻️ 기존 분석 복사 (횟수 차감 없음): {}", file.getTitle());
+                log.info("기존 분석 복사 (횟수 차감 없음): {}", file.getTitle());
                 return;
             }
 
             // AI 분석 실행
+            // 저장까지 전부 try 안에서 한다. 예전에는 마지막 save 가 try 밖에 있어서
+            // 컬럼 길이 초과 등으로 저장이 실패하면 PROCESSING 상태로 영구 고착됐다.
             try {
                 file.setAnalysisStatus("PROCESSING");
                 fileRepository.save(file);
@@ -80,25 +85,17 @@ public class AnalysisService {
                 Map<String, String> analysis =
                         geminiService.analyzeText(file.getPreview(), file.getTitle());
 
-                file.setAiGenre(analysis.get("genre"));
-                file.setAiKeywords(analysis.get("keywords"));
-                file.setAiMood(analysis.get("mood"));
-                file.setAiContent(analysis.get("info"));
-                file.setAiSummary(analysis.get("summary"));
-                file.setAiTarget(analysis.get("target"));
-                file.setAiAnalyzedAt(LocalDateTime.now());
-                file.setAnalysisStatus("DONE");
+                applyAnalysis(file, analysis);
+                fileRepository.save(file);
 
                 // 사용 로그 기록 (API 실제 호출한 경우만)
                 recordAnalysisLog(user, deviceId, fileId);
-                log.info("✅ AI 분석 완료: {} → 장르: {}", file.getTitle(), analysis.get("genre"));
+                log.info("AI 분석 완료: {} -> 장르: {}", file.getTitle(), analysis.get("genre"));
 
             } catch (Exception e) {
-                file.setAnalysisStatus("FAILED");
-                log.error("❌ AI 분석 실패: {} - {}", file.getTitle(), e.getMessage());
+                log.error("AI 분석 실패: {} - {}", file.getTitle(), e.getMessage());
+                markFailed(file);
             }
-
-            fileRepository.save(file);
         });
     }
 
@@ -141,6 +138,33 @@ public class AnalysisService {
         }
 
         return Math.max(0, DAILY_LIMIT - todayCount);
+    }
+
+    /** 분석 결과를 엔티티에 반영 */
+    private void applyAnalysis(FileEntity file, Map<String, String> analysis) {
+        file.setAiGenre(analysis.get("genre"));
+        file.setAiKeywords(analysis.get("keywords"));
+        file.setAiMood(analysis.get("mood"));
+        file.setAiContent(analysis.get("info"));
+        file.setAiSummary(analysis.get("summary"));
+        file.setAiTarget(analysis.get("target"));
+        file.setAiAnalyzedAt(LocalDateTime.now());
+        file.setAnalysisStatus("DONE");
+    }
+
+    /**
+     * FAILED 로 표시한다. 분석 결과 저장이 실패한 경우 엔티티가 더럽혀져 있을 수 있으므로
+     * 상태 컬럼만 다시 읽어와서 갱신한다. (그래야 재시도 대상으로 남는다)
+     */
+    private void markFailed(FileEntity file) {
+        try {
+            fileRepository.findById(file.getId()).ifPresent(fresh -> {
+                fresh.setAnalysisStatus("FAILED");
+                fileRepository.save(fresh);
+            });
+        } catch (RuntimeException e) {
+            log.error("FAILED 상태 기록마저 실패. fileId={}", file.getId(), e);
+        }
     }
 
     /**
