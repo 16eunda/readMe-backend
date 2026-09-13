@@ -4,10 +4,12 @@ import com.ReadMe.demo.domain.FileEntity;
 import com.ReadMe.demo.domain.UserEntity;
 import com.ReadMe.demo.dto.AiInfoResponse;
 import com.ReadMe.demo.dto.UpdateFileAiInfoRequest;
-import com.ReadMe.demo.repository.FileReadLogRepository;
+import com.ReadMe.demo.exception.FileNotFoundException;
+import com.ReadMe.demo.exception.UnauthorizedException;
 import com.ReadMe.demo.repository.FileRepository;
 import com.ReadMe.demo.security.CustomUserDetails;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 
@@ -17,6 +19,7 @@ import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class AiAnalysisService {
 
     private final FileRepository fileRepository;
@@ -26,10 +29,11 @@ public class AiAnalysisService {
     // AI 분석 정보 전체 조회 (장르, 키워드, 분위기, 요약, 타겟)
     // 사용자가 직접 요청한 경우 → 동기 처리 (바로 결과 반환)
     public AiInfoResponse getAiInfo(Long fileId, String deviceId, Authentication authentication) {
-        FileEntity file = fileRepository.findById(fileId)
-                .orElseThrow(() -> new RuntimeException("파일을 찾을 수 없습니다: " + fileId));
-
         UserEntity user = extractUser(authentication);
+
+        // 소유권 검증. 남의 파일 분석 결과를 열람할 수 없다.
+        FileEntity file = findOwnedFile(fileId, user, deviceId);
+
         if (!subscriptionService.isPremium(user, deviceId)) {
             return AiInfoResponse.notAvailable();
         }
@@ -39,10 +43,13 @@ public class AiAnalysisService {
             return AiInfoResponse.from(file);
         }
 
-        // 같은 제목의 이미 분석된 파일 있으면 복사 (API 호출 없음, 즉시 반환)
-        FileEntity existing = fileRepository
-                .findFirstByNormalizedTitleAndAiGenreIsNotNullAndIdNot(
-                        file.getNormalizedTitle(), file.getId());
+        // 같은 제목의 이미 분석된 "본인" 파일 있으면 복사 (API 호출 없음, 즉시 반환)
+        FileEntity existing = fileRepository.findOwnAnalyzedSameTitle(
+                file.getNormalizedTitle(),
+                file.getId(),
+                user != null ? user.getId() : null,
+                deviceId
+        );
 
         if (existing != null) {
             file.setAiGenre(existing.getAiGenre());
@@ -50,6 +57,7 @@ public class AiAnalysisService {
             file.setAiMood(existing.getAiMood());
             file.setAiSummary(existing.getAiSummary());
             file.setAiTarget(existing.getAiTarget());
+            file.setAiContent(existing.getAiContent());
             file.setAiAnalyzedAt(LocalDateTime.now());
             file.setAnalysisStatus("DONE");
             fileRepository.save(file);
@@ -76,23 +84,18 @@ public class AiAnalysisService {
             return AiInfoResponse.from(file);
 
         } catch (Exception e) {
-            file.setAnalysisStatus("FAILED");
-            fileRepository.save(file);
-            throw new RuntimeException("AI 분석 실패: " + e.getMessage());
+            log.error("AI 분석 실패. fileId={} - {}", fileId, e.getMessage());
+            markFailed(fileId);
+            return AiInfoResponse.failed();
         }
     }
 
     // AI 분석 정보 업데이트
     public AiInfoResponse updateFileAiInfo(Long fileId, String deviceId, Authentication authentication, UpdateFileAiInfoRequest request) {
-        FileEntity file = fileRepository.findById(fileId)
-                .orElseThrow(() -> new RuntimeException("파일을 찾을 수 없습니다: " + fileId));
+        UserEntity user = extractUser(authentication);
 
-        // 프리미엄 체크
-        UserEntity user = null;
-        if (authentication != null && authentication.isAuthenticated()
-                && authentication.getPrincipal() instanceof CustomUserDetails) {
-            user = ((CustomUserDetails) authentication.getPrincipal()).getUser();
-        }
+        // 소유권 검증. 남의 파일 분석 결과를 수정할 수 없다.
+        FileEntity file = findOwnedFile(fileId, user, deviceId);
 
         if (!subscriptionService.isPremium(user, deviceId)) {
             return AiInfoResponse.notAvailable();
@@ -114,6 +117,31 @@ public class AiAnalysisService {
         fileRepository.save(file);
 
         return AiInfoResponse.from(file);
+    }
+
+    /** 요청자가 실제로 소유한 파일만 돌려준다. */
+    private FileEntity findOwnedFile(Long fileId, UserEntity user, String deviceId) {
+        if (user != null) {
+            return fileRepository.findByIdAndUserId(fileId, user.getId())
+                    .orElseThrow(() -> new FileNotFoundException(fileId));
+        }
+        if (deviceId != null && !deviceId.isBlank()) {
+            return fileRepository.findByIdAndDeviceId(fileId, deviceId)
+                    .orElseThrow(() -> new FileNotFoundException(fileId));
+        }
+        throw new UnauthorizedException("인증 정보 없음");
+    }
+
+    /** 분석 실패를 기록해 재시도 대상으로 남긴다. */
+    private void markFailed(Long fileId) {
+        try {
+            fileRepository.findById(fileId).ifPresent(fresh -> {
+                fresh.setAnalysisStatus("FAILED");
+                fileRepository.save(fresh);
+            });
+        } catch (RuntimeException e) {
+            log.error("FAILED 상태 기록 실패. fileId={}", fileId, e);
+        }
     }
 
     private UserEntity extractUser(Authentication authentication) {

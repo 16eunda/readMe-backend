@@ -1,0 +1,26 @@
+# 시크릿 - 절대 이미지에 들어가면 안 됨
+.env
+.env.*
+src/main/resources/service-account.json
+**/service-account.json
+
+# 빌드 산출물 (컨테이너 안에서 새로 빌드함)
+build/
+out/
+.gradle/
+
+# VCS / IDE
+.git
+.gitignore
+.gitattributes
+.idea
+.vscode
+*.iml
+*.iws
+*.ipr
+
+# 개인 문서 / 로그
+docs/
+*.md
+*.log
+.DS_Store

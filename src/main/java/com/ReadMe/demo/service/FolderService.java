@@ -7,6 +7,7 @@ import com.ReadMe.demo.dto.FolderBulkDeleteRequest;
 import com.ReadMe.demo.dto.FolderDto;
 import com.ReadMe.demo.dto.FolderRequest;
 import com.ReadMe.demo.exception.FolderNotEmptyException;
+import com.ReadMe.demo.exception.UnauthorizedException;
 import com.ReadMe.demo.repository.FileRepository;
 import com.ReadMe.demo.repository.FolderRepository;
 import com.ReadMe.demo.security.CustomUserDetails;
@@ -49,6 +50,11 @@ public class FolderService {
             return folders.stream().map(FolderDto::from).toList();
         }
 
+        // deviceId 없이 조회하면 device_id IS NULL 조건이 되어, deviceId 없이 저장된 남의 폴더가 보인다.
+        if (deviceId == null || deviceId.isBlank()) {
+            return List.of();
+        }
+
         List<FolderEntity> folders = (path == null)
                 ? folderRepository.findByDeviceId(deviceId)
                 : folderRepository.findByDeviceIdAndPath(deviceId, path);
@@ -76,9 +82,13 @@ public class FolderService {
     }
 
     // 폴더 업데이트 (이름, 경로)
-    public FolderDto updateFolder(Long id, Map<String, Object> body) {
+    @Transactional
+    public FolderDto updateFolder(Long id, Map<String, Object> body, String deviceId, Authentication authentication) {
         FolderEntity folder = folderRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("폴더를 찾을 수 없습니다"));
+
+        // 소유권 검증. 예전에는 검증 없이 남의 폴더도 수정할 수 있었다.
+        assertFolderOwner(folder, extractUser(authentication), deviceId);
 
         if (body.containsKey("name")) {
             folder.setName((String) body.get("name"));
@@ -149,23 +159,21 @@ public class FolderService {
         }
     }
 
-    // 폴더 소유자 검증 (삭제 권한 체크)
+    // 폴더 소유자 검증
     private void assertFolderOwner(FolderEntity folder,
                                    UserEntity user,
                                    String deviceId) {
 
         if (user != null) {
-
-            if (!user.equals(folder.getUser())) {
-                throw new RuntimeException("삭제 권한 없음");
+            if (folder.getUser() == null || !user.getId().equals(folder.getUser().getId())) {
+                throw new UnauthorizedException("폴더 권한 없음");
             }
+            return;
+        }
 
-        } else {
-
-            if (!deviceId.equals(folder.getDeviceId())) {
-                throw new RuntimeException("삭제 권한 없음");
-            }
-
+        // 게스트: deviceId 가 없으면 소유 판단 자체가 불가능하므로 거절한다.
+        if (deviceId == null || deviceId.isBlank() || !deviceId.equals(folder.getDeviceId())) {
+            throw new UnauthorizedException("폴더 권한 없음");
         }
     }
 
@@ -236,9 +244,13 @@ public class FolderService {
         }
     }
 
-    public FolderDto moveFolder(Long id, String newPath) {
+    @Transactional
+    public FolderDto moveFolder(Long id, String newPath, String deviceId, Authentication authentication) {
         FolderEntity folder = folderRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Folder not found: " + id));
+
+        // 소유권 검증. 예전에는 검증 없이 남의 폴더도 이동시킬 수 있었다.
+        assertFolderOwner(folder, extractUser(authentication), deviceId);
 
         folder.setPath(newPath);
         return FolderDto.from(folderRepository.save(folder));

@@ -27,7 +27,6 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.logging.Logger;
 
 @Service
 @RequiredArgsConstructor
@@ -49,8 +48,6 @@ public class FileService {
     // 파일 저장
     // 파일 저장과 동시에 AI 분석도 트리거 (중복 체크 포함)
     public FileEntity saveFile(FileEntity file, String deviceId, Authentication authentication) {
-        System.out.println("=== Received From RN ===");
-        System.out.println(file);
         if (deviceId == null || deviceId.isBlank()) {
             throw new IllegalArgumentException("X-Device-Id 헤더가 필요합니다.");
         }
@@ -95,9 +92,13 @@ public class FileService {
                 return fileRepository.save(saved);
             }
 
-            // 같은 제목의 기존 분석 결과는 사용자/기기와 무관하게 재사용한다.
-            FileEntity existing = fileRepository.findFirstByNormalizedTitleAndAiGenreIsNotNullAndIdNot(
-                    normalized, saved.getId()
+            // 같은 제목의 기존 분석 결과는 "본인" 파일에서만 재사용한다.
+            // 전역 재사용은 서로 다른 사용자의 파일끼리 분석 결과를 섞어버린다.
+            FileEntity existing = fileRepository.findOwnAnalyzedSameTitle(
+                    normalized,
+                    saved.getId(),
+                    saved.getUser() != null ? saved.getUser().getId() : null,
+                    deviceId
             );
 
             if (existing != null) {
@@ -302,9 +303,10 @@ public class FileService {
     }
 
     // 파일 정보 업데이트 (제목, 리뷰, 별점, 경로)
-    public FileEntity updateFile(Long id, Map<String, Object> body) {
-        FileEntity file = fileRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("파일을 찾을 수 없습니다"));
+    @Transactional
+    public FileEntity updateFile(Long id, Map<String, Object> body, String deviceId, Authentication authentication) {
+        // 소유권 검증. 예전에는 findById 만 해서 남의 파일도 수정할 수 있었다.
+        FileEntity file = findOwnedFile(id, extractUserId(authentication), deviceId);
 
         if (body.containsKey("title")) {
             file.setTitle((String) body.get("title"));
@@ -337,31 +339,30 @@ public class FileService {
         // 로그인 상태면 userId로 삭제, 게스트 상태면 deviceId로 삭제
         if (user != null) {
             fileRepository.deleteByUserAndIdIn(user, ids);
-        } else {
+        } else if (deviceId != null && !deviceId.isBlank()) {
             fileRepository.deleteByDeviceIdAndIdIn(deviceId, ids);
+        } else {
+            // deviceId 없이 삭제하면 device_id IS NULL 조건이 되어 소유자를 확인할 수 없다.
+            throw new UnauthorizedException("인증 정보 없음");
         }
     }
 
-    // FileService.java
-    // 파일 ID로 조회 (추가!)
-    public FileEntity getFileById(Long id) {
-        return fileRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("File not found"));
+    // 파일 ID로 조회 (본인 파일만)
+    @Transactional(readOnly = true)
+    public FileEntity getFileById(Long id, String deviceId, Authentication authentication) {
+        return findOwnedFile(id, extractUserId(authentication), deviceId);
     }
 
     // 파일 프로그래스 저장
+    @Transactional
     public FileEntity updateProgress(Long id, Map<String, Object> body, String deviceId, Authentication authentication) {
-        System.out.println("📥 받은 body: " + body);
-        System.out.println("🔍 recordReadLog 값: " + body.get("recordReadLog"));
-
-        FileEntity file = fileRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("File not found"));
+        // 소유권 검증. 예전에는 findById 만 해서 남의 진행률도 바꿀 수 있었다.
+        FileEntity file = findOwnedFile(id, extractUserId(authentication), deviceId);
 
         // 완독여부
         boolean completed = false;
 
-        if (body.containsKey("progress")) {
-            Number p = (Number) body.get("progress");
+        if (body.get("progress") instanceof Number p) {
             completed = p.doubleValue() >= 0.99; // 99% 이상이면 완독으로 간주
             file.setProgress(p.doubleValue());
         }
@@ -374,12 +375,10 @@ public class FileService {
             file.setReadingPreview((String) body.get("readingPreview"));
         }
 
-        if (body.containsKey("anchorRatio")) {
+        if (body.get("anchorRatio") instanceof Number r) {
             // anchorRatio는 0~1 사이의 값으로, 책에서 현재 위치가 어디쯤인지 나타냄 (예: 0.5면 책의 중간 지점)
-            // 로그 남기기
-            Logger.getLogger(FileService.class.getName()).info("📌 anchorRatio 업데이트: " + body.get("anchorRatio"));
-            Double r = (Double) body.get("anchorRatio");
-            file.setAnchorRatio(r);
+            // JSON 이 0 이나 1 로 오면 Integer 로 역직렬화되므로 Double 캐스팅은 ClassCastException 이 난다.
+            file.setAnchorRatio(r.doubleValue());
         }
 
         // 완독 여부 업데이트
@@ -398,7 +397,6 @@ public class FileService {
             if (subscriptionService.isPremium(user, deviceId)) {
                 file.setAnalysisStatus("QUEUED");
                 queueService.enqueue(file.getId());
-                System.out.println("🤖 책 읽는 중 → 미분석 파일 큐 등록: " + file.getTitle());
             }
         }
 
@@ -414,13 +412,8 @@ public class FileService {
                 log.setFile(file);
                 log.setReadAt(LocalDateTime.now());
                 readLogRepository.save(log);
-                System.out.println("📝 새로운 로그 생성 중...");
-            } else {
-                System.out.println("⏭️ 오늘 이미 로그 있음, 스킵");
             }
             // 이미 오늘 로그가 있으면 아무것도 안 함
-        }else {
-            System.out.println("❌ 로그 기록 조건 불충족");
         }
 
         return fileRepository.save(file);

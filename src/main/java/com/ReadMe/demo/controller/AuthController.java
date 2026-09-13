@@ -6,13 +6,13 @@ import com.ReadMe.demo.dto.LoginRequest;
 import com.ReadMe.demo.dto.LoginResponse;
 import com.ReadMe.demo.dto.SignupRequest;
 import com.ReadMe.demo.exception.UnauthorizedException;
+import com.ReadMe.demo.security.CustomUserDetails;
 import com.ReadMe.demo.service.AuthService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.HashMap;
 import java.util.Map;
 
 @RestController
@@ -49,15 +49,12 @@ public class AuthController {
         }
     }
 
-    // 토큰 재발급
+    // 토큰 재발급 → { accessToken, refreshToken }
+    // 헤더가 없어도 400 이 아니라 401 로 응답해야 앱이 세션 종료로 판단한다.
     @PostMapping("/refresh")
-    public ResponseEntity<?> refreshToken (@RequestHeader("Authorization") String authHeader) {
+    public ResponseEntity<?> refreshToken (@RequestHeader(value = "Authorization", required = false) String authHeader) {
         try {
-            String newAccessToken = authService.refreshToken(authHeader);
-            Map<String, String> response = new HashMap<>();
-            response.put("accessToken", newAccessToken);
-
-            return ResponseEntity.ok(response);
+            return ResponseEntity.ok(authService.refreshToken(authHeader));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.status(401).body(e.getMessage());
         } catch (Exception e) {
@@ -65,8 +62,23 @@ public class AuthController {
         }
     }
 
-    // 회원 탈퇴
-    @DeleteMapping("/users/me")
+    // 내 정보 조회. 앱이 저장된 accessToken 이 아직 유효한지 확인할 때 쓴다.
+    // 앱이 /auth/user/me 로 호출하고 있어 두 주소를 모두 받는다. 앱을 /auth/users/me 로 맞춘 뒤 /user/me 는 제거한다.
+    @GetMapping({"/users/me", "/user/me"})
+    public ResponseEntity<Map<String, String>> me(Authentication authentication) {
+        if (authentication == null || !(authentication.getPrincipal() instanceof CustomUserDetails details)) {
+            throw new UnauthorizedException("로그인이 필요합니다.");
+        }
+
+        UserEntity user = details.getUser();
+        return ResponseEntity.ok(Map.of(
+                "userId", String.valueOf(user.getId()),
+                "username", user.getUsername()
+        ));
+    }
+
+    // 회원 탈퇴 (두 주소를 받는 이유는 위와 같다)
+    @DeleteMapping({"/users/me", "/user/me"})
     public ResponseEntity<Void> withdraw(Authentication authentication) {
         if (authentication == null) {
             throw new UnauthorizedException("회원 탈퇴 : 인증 정보 없음");

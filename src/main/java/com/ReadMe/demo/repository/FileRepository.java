@@ -140,6 +140,9 @@ public interface FileRepository extends JpaRepository<FileEntity, Long> {
     // deviceId와 id 리스트로 파일 삭제
     void deleteByDeviceIdAndIdIn(String deviceId, List<Long> ids);
 
+    // 회원 탈퇴 시 계정의 파일 전체 삭제 (엔티티 단위로 지우므로 읽기 기록도 cascade 로 함께 삭제된다)
+    void deleteByUser(UserEntity user);
+
     // 같은 기기 내 중복 확인
     boolean existsByDeviceIdAndTitleAndPath(String deviceId, String title, String path);
 
@@ -233,10 +236,58 @@ public interface FileRepository extends JpaRepository<FileEntity, Long> {
     """)
     List<HistoryFileDto> findRecentFileDtosByDeviceId(@Param("deviceId") String deviceId, Pageable pageable);
 
-    // AI 장르가 있는 파일 수 (이미 분석된 파일이 있는지 확인용)
-    FileEntity findFirstByNormalizedTitleAndAiGenreIsNotNullAndIdNot(
-            String normalizedTitle, Long id
+    // 같은 제목의 이미 분석된 "본인" 파일 조회.
+    // 예전에는 소유자 조건 없이 전역으로 찾아서 남의 파일 분석 결과가 복사됐다.
+    @Query("""
+        SELECT f FROM FileEntity f
+        WHERE f.normalizedTitle = :normalizedTitle
+          AND f.aiGenre IS NOT NULL
+          AND f.id <> :excludeId
+          AND f.user.id = :userId
+        ORDER BY f.aiAnalyzedAt DESC
+    """)
+    List<FileEntity> findAnalyzedSameTitleByUserId(
+            @Param("normalizedTitle") String normalizedTitle,
+            @Param("excludeId") Long excludeId,
+            @Param("userId") Long userId,
+            Pageable pageable
     );
+
+    @Query("""
+        SELECT f FROM FileEntity f
+        WHERE f.normalizedTitle = :normalizedTitle
+          AND f.aiGenre IS NOT NULL
+          AND f.id <> :excludeId
+          AND f.deviceId = :deviceId
+        ORDER BY f.aiAnalyzedAt DESC
+    """)
+    List<FileEntity> findAnalyzedSameTitleByDeviceId(
+            @Param("normalizedTitle") String normalizedTitle,
+            @Param("excludeId") Long excludeId,
+            @Param("deviceId") String deviceId,
+            Pageable pageable
+    );
+
+    /** 같은 제목의 분석 결과 재사용 - 반드시 본인(user 또는 device) 범위 안에서만 찾는다. */
+    default FileEntity findOwnAnalyzedSameTitle(
+            String normalizedTitle, Long excludeId, Long userId, String deviceId
+    ) {
+        if (normalizedTitle == null || normalizedTitle.isBlank() || excludeId == null) {
+            return null;
+        }
+
+        Pageable one = org.springframework.data.domain.PageRequest.of(0, 1);
+        List<FileEntity> found;
+        if (userId != null) {
+            found = findAnalyzedSameTitleByUserId(normalizedTitle, excludeId, userId, one);
+        } else if (deviceId != null && !deviceId.isBlank()) {
+            found = findAnalyzedSameTitleByDeviceId(normalizedTitle, excludeId, deviceId, one);
+        } else {
+            return null;
+        }
+
+        return found.isEmpty() ? null : found.get(0);
+    }
 
     // userId와 path로 파일 삭제 (폴더 삭제 시)
     void deleteByUserAndPathIn(UserEntity user, List<Long> folderIds);

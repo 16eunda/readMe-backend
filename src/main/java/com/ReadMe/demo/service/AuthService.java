@@ -3,6 +3,7 @@ package com.ReadMe.demo.service;
 import com.ReadMe.demo.domain.UserEntity;
 import com.ReadMe.demo.dto.LoginResponse;
 import com.ReadMe.demo.exception.UnauthorizedException;
+import com.ReadMe.demo.repository.AiAnalysisLogRepository;
 import com.ReadMe.demo.repository.FileRepository;
 import com.ReadMe.demo.repository.FolderRepository;
 import com.ReadMe.demo.repository.UserRepository;
@@ -32,10 +33,16 @@ public class AuthService {
     private FolderRepository folderRepository;
 
     @Autowired
+    private AiAnalysisLogRepository aiAnalysisLogRepository;
+
+    @Autowired
     private PasswordEncoder passwordEncoder;  // BCrypt
 
     @Autowired
     private JwtTokenProvider jwtTokenProvider;
+
+    @Autowired
+    private SubscriptionService subscriptionService;
 
     // 회원가입
     @Transactional
@@ -72,29 +79,24 @@ public class AuthService {
             // 파일 연결
             long fileCnt = fileRepository.countByDeviceIdAndUserIsNull(deviceId);
             if(fileCnt > 0) {
-                int updated = fileRepository.linkDeviceToUser(deviceId, user.getId());
-                System.out.println("✅ " + updated + "개 파일이 사용자와 연결되었습니다");
-            } else {
-                System.out.println("ℹ️ 연결할 파일 없음");
+                fileRepository.linkDeviceToUser(deviceId, user.getId());
             }
 
             // 폴더 연결
             long folderCnt = folderRepository.countByDeviceIdAndUserIsNull(deviceId);
             if(folderCnt > 0) {
-                int updated = folderRepository.linkDeviceToUser(deviceId, user.getId());
-                System.out.println("✅ " + updated + "개 폴더가 사용자와 연결되었습니다");
-            } else {
-                System.out.println("ℹ️ 연결할 폴더 없음");
+                folderRepository.linkDeviceToUser(deviceId, user.getId());
             }
+
+            // 구독 연결
+            // 게스트 상태에서 결제한 구독을 계정으로 승계한다.
+            // 이게 없으면 결제한 사용자가 로그인하는 순간 프리미엄을 잃는다.
+            subscriptionService.linkDeviceSubscriptionsToUser(deviceId, user);
         }
 
         // 2. 토큰 2개 발급
         String accessToken = jwtTokenProvider.generateAccessToken(user.getId().toString());
         String refreshToken = jwtTokenProvider.generateRefreshToken(user.getId().toString());
-
-        // 만료시간 찍기
-        System.out.println("AccessToken 만료시간: " + jwtTokenProvider.getExpirationDateFromToken(accessToken));
-        System.out.println("RefreshToken 만료시간: " + jwtTokenProvider.getExpirationDateFromToken(refreshToken));
 
 
         // 3. 응답
@@ -108,7 +110,10 @@ public class AuthService {
     }
 
     // 토큰 재발급
-    public String refreshToken(String authHeader) {
+    // accessToken 과 함께 refreshToken 도 새로 발급한다(슬라이딩 만료).
+    // 앱을 계속 쓰는 사용자는 로그인이 유지되고, 30일 동안 한 번도 쓰지 않은 경우에만 다시 로그인한다.
+    // 이전 refreshToken 도 자기 만료일까지는 유효하므로, 새 토큰 저장에 실패한 앱이 로그아웃되지는 않는다.
+    public Map<String, String> refreshToken(String authHeader) {
         // 1. Authorization 헤더에서 refreshToken 추출
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
             throw new IllegalArgumentException("토큰이 없습니다");
@@ -121,34 +126,53 @@ public class AuthService {
             throw new IllegalArgumentException("토큰이 만료되었습니다");
         }
 
-        // 3. refreshToken에서 사용자 정보 추출
+        // 3. accessToken 으로는 재발급할 수 없다.
+        //    (예전에는 두 토큰이 구분되지 않아 탈취한 accessToken 으로 무기한 연장이 가능했다)
+        if (!jwtTokenProvider.isRefreshToken(refreshToken)) {
+            throw new IllegalArgumentException("refreshToken이 아닙니다");
+        }
+
+        // 4. refreshToken에서 사용자 정보 추출
         String userId = jwtTokenProvider.getUserIdFromToken(refreshToken);
 
-        // 4. DB에서 사용자 존재 확인 (선택사항)
-        UserEntity user = userRepository.findById(Long.parseLong(userId))
-                .orElseThrow(() -> new RuntimeException("사용자를 찾을 수 없습니다"));
+        // 5. DB에서 사용자 존재 확인
+        //    탈퇴한 사용자도 @Where 로 조회되지 않는다. 여기서 500 을 주면 앱이 로그아웃하지 못하고 갇힌다.
+        userRepository.findById(Long.parseLong(userId))
+                .orElseThrow(() -> new IllegalArgumentException("탈퇴했거나 존재하지 않는 사용자입니다"));
 
-        // 5. 새로운 accessToken 발급
-        String newAccessToken = jwtTokenProvider.generateAccessToken(userId);
-
-        return newAccessToken;
+        // 6. 새 토큰 발급
+        Map<String, String> tokens = new HashMap<>();
+        tokens.put("accessToken", jwtTokenProvider.generateAccessToken(userId));
+        tokens.put("refreshToken", jwtTokenProvider.generateRefreshToken(userId));
+        return tokens;
     }
 
     // 회원 탈퇴
+    // - 계정에 딸린 개인 데이터(책 기록·읽기 기록·폴더·AI 사용 기록)는 즉시 삭제한다. (Google Play 계정 삭제 정책)
+    // - 구독(결제 기록)은 지우지 않고 계정 연결만 끊는다. Google Play 구독 해지는 사용자가 스토어에서 직접 한다.
+    // - 계정 행은 아이디·비밀번호·이메일을 비운 채 탈퇴 시각만 남긴다. 아이디를 비우므로 같은 아이디로 다시 가입할 수 있다.
     @Transactional
     public void withdraw(Authentication authentication) {
         if (authentication == null || !(authentication.getPrincipal() instanceof CustomUserDetails)) {
             throw new UnauthorizedException("로그인이 필요합니다.");
         }
 
-        UserEntity user = ((CustomUserDetails) authentication.getPrincipal()).getUser();
+        // 인증 필터가 넘겨준 엔티티는 이 트랜잭션 밖에서 조회된 준영속 상태라 값을 바꿔도 저장되지 않는다.
+        // (그래서 예전에는 탈퇴 API 가 200 을 주고도 실제로는 탈퇴되지 않았다.) 이 트랜잭션에서 다시 조회한다.
+        // 이미 탈퇴한 사용자는 @Where 때문에 조회되지 않는다.
+        Long userId = ((CustomUserDetails) authentication.getPrincipal()).getUserId();
+        UserEntity user = userRepository.findById(userId)
+                .orElseThrow(() -> new UnauthorizedException("이미 탈퇴했거나 존재하지 않는 사용자입니다."));
 
-        // 이미 탈퇴한 경우 방지
-        if (user.getDeletedAt() != null) {
-            throw new RuntimeException("이미 탈퇴한 사용자입니다.");
-        }
+        fileRepository.deleteByUser(user);
+        folderRepository.deleteByUser(user);
+        aiAnalysisLogRepository.deleteByUser(user);
+        subscriptionService.detachSubscriptionsFromUser(user);
 
-        // soft delete
+        // soft delete + 개인정보 제거
+        user.setUsername(null);
+        user.setPassword(null);
+        user.setEmail(null);
         user.setDeletedAt(LocalDateTime.now());
     }
 }

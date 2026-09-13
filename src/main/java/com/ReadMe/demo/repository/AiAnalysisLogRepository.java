@@ -1,6 +1,7 @@
 package com.ReadMe.demo.repository;
 
 import com.ReadMe.demo.domain.AiAnalysisLog;
+import com.ReadMe.demo.domain.UserEntity;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -16,4 +17,7 @@ public interface AiAnalysisLogRepository extends JpaRepository<AiAnalysisLog, Lo
     // 게스트의 오늘 사용 횟수
     @Query("SELECT COUNT(l) FROM AiAnalysisLog l WHERE l.deviceId = :deviceId AND l.user IS NULL AND l.analyzedAt >= :startOfDay")
     long countTodayByDeviceId(@Param("deviceId") String deviceId, @Param("startOfDay") LocalDateTime startOfDay);
+
+    // 회원 탈퇴 시 계정의 AI 사용 기록 삭제
+    void deleteByUser(UserEntity user);
 }

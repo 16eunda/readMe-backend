@@ -46,9 +46,11 @@ public class FolderController {
     @PatchMapping("/{id}")
     public FolderDto updateFolder(
             @PathVariable Long id,
-            @RequestBody Map<String, Object> body
+            @RequestBody Map<String, Object> body,
+            @RequestHeader(value = "X-Device-Id", required = false) String deviceId,
+            Authentication authentication
     ) {
-        return folderService.updateFolder(id, body);
+        return folderService.updateFolder(id, body, deviceId, authentication);
     }
 
 
@@ -71,9 +73,14 @@ public class FolderController {
 
     // 폴더 이동 (경로 변경)
     @PutMapping("/{id}")
-    public ResponseEntity<FolderDto> moveFolder(@PathVariable Long id, @RequestBody Map<String, String> body) {
+    public ResponseEntity<FolderDto> moveFolder(
+            @PathVariable Long id,
+            @RequestBody Map<String, String> body,
+            @RequestHeader(value = "X-Device-Id", required = false) String deviceId,
+            Authentication authentication
+    ) {
         String newPath = body.get("path");
-        FolderDto updated = folderService.moveFolder(id, newPath);
+        FolderDto updated = folderService.moveFolder(id, newPath, deviceId, authentication);
         return ResponseEntity.ok(updated);
     }
 }

@@ -1,0 +1,32 @@
+# 테스트는 외부 DB/시크릿 없이 돌아야 한다.
+# (이전에는 DATABASE_* 환경변수가 없으면 contextLoads 가 실패했다)
+spring:
+  datasource:
+    url: jdbc:h2:mem:readme;DB_CLOSE_DELAY=-1;MODE=PostgreSQL
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: ""
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    database-platform: org.hibernate.dialect.H2Dialect
+    show-sql: false
+    open-in-view: false
+  devtools:
+    restart:
+      enabled: false
+
+gemini:
+  api:
+    key: test-key
+    url: http://localhost:0/gemini
+
+jwt:
+  secret: dGVzdC1zZWNyZXQtZm9yLXVuaXQtdGVzdHMtb25seS1ub3QtdXNlZC1pbi1wcm9kdWN0aW9uLTEyMzQ1Njc4
+
+google:
+  play:
+    package-name: com.readme.app.test
+    webhook-token: ""
+    # 테스트 컨텍스트에서 실제 배치가 돌지 않도록 아주 먼 시각으로
+    sync-cron: "0 0 0 1 1 ?"

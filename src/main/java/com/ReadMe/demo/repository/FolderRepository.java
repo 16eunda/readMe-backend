@@ -35,5 +35,8 @@ public interface FolderRepository extends JpaRepository<FolderEntity, Long> {
     List<FolderEntity> findByDeviceId(String deviceId);
 
     List<FolderEntity> findByUser(UserEntity user);
+
+    // 회원 탈퇴 시 계정의 폴더 전체 삭제
+    void deleteByUser(UserEntity user);
 }
 
