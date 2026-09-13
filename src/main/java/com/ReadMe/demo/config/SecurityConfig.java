@@ -30,6 +30,9 @@ public class SecurityConfig {
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .csrf(csrf -> csrf.disable())
                 .authorizeHttpRequests(auth -> auth
+                        // 에러 디스패치(/error)를 막으면 400/404/500 이 전부 403 으로 바뀌어
+                        // 앱이 "권한 거부/프리미엄 필요"로 오해한다.
+                        .requestMatchers("/error").permitAll()
                         .requestMatchers("/auth/**").permitAll()
                         .requestMatchers("/files/**").permitAll()
                         .requestMatchers("/folders/**").permitAll()

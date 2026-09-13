@@ -64,6 +64,12 @@ public class GlobalExceptionHandler {
                 .body(ApiErrorResponse.of("PREMIUM_REQUIRED", e.getMessage(), null));
     }
 
+    @ExceptionHandler(SubscriptionOwnedByAnotherAccountException.class)
+    public ResponseEntity<ApiErrorResponse> handleSubscriptionOwnedByAnotherAccount(SubscriptionOwnedByAnotherAccountException e) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ApiErrorResponse.of("SUBSCRIPTION_OWNED_BY_OTHER_ACCOUNT", e.getMessage(), null));
+    }
+
     @ExceptionHandler(RuntimeException.class)
     public ResponseEntity<ApiErrorResponse> handleRuntimeException(RuntimeException e) {
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
