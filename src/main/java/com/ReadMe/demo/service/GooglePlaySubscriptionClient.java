@@ -28,8 +28,17 @@ public class GooglePlaySubscriptionClient {
 
     private final ObjectMapper objectMapper;
 
+    /** 타임아웃이 설정된 공용 RestTemplate (HttpClientConfig). 호출마다 새로 만들지 않는다. */
+    private final RestTemplate restTemplate;
+
     @Value("${google.play.package-name:com.readme.app}")
     private String packageName;
+
+    /**
+     * 서비스 계정 자격증명은 한 번만 만들고 재사용한다.
+     * 매 호출마다 fromStream() 하면 그때마다 토큰을 새로 발급받아 지연과 쿼터를 낭비한다.
+     */
+    private volatile GoogleCredentials credentials;
 
     public GoogleSubscriptionPurchase getSubscription(String purchaseToken) {
         if (purchaseToken == null || purchaseToken.isBlank()) {
@@ -43,7 +52,7 @@ public class GooglePlaySubscriptionClient {
                     purchaseToken
             );
 
-            ResponseEntity<String> response = new RestTemplate().exchange(
+            ResponseEntity<String> response = restTemplate.exchange(
                     url,
                     HttpMethod.GET,
                     authorizedEntity(),
@@ -74,7 +83,7 @@ public class GooglePlaySubscriptionClient {
                     productId,
                     purchaseToken
             );
-            new RestTemplate().exchange(url, HttpMethod.POST, authorizedEntity(), String.class);
+            restTemplate.exchange(url, HttpMethod.POST, authorizedEntity(), String.class);
         } catch (RestClientResponseException e) {
             logGoogleApiError("구독 승인", e);
             throw new IllegalStateException("Google Play 구독을 승인할 수 없습니다.", e);
@@ -123,19 +132,40 @@ public class GooglePlaySubscriptionClient {
     }
 
     private String getAccessToken() throws Exception {
-        InputStream stream;
+        GoogleCredentials current = credentials;
+        if (current == null) {
+            synchronized (this) {
+                if (credentials == null) {
+                    credentials = loadCredentials();
+                }
+                current = credentials;
+            }
+        }
+        current.refreshIfExpired();
+        return current.getAccessToken().getTokenValue();
+    }
+
+    private GoogleCredentials loadCredentials() throws Exception {
+        // 운영에서는 환경변수만 사용한다. 파일은 로컬 개발용 fallback이며 이미지에 포함되지 않는다.
         String serviceAccountJson = System.getenv("GOOGLE_SERVICE_ACCOUNT_JSON");
+        InputStream stream;
         if (serviceAccountJson != null && !serviceAccountJson.isBlank()) {
             stream = new java.io.ByteArrayInputStream(serviceAccountJson.getBytes(StandardCharsets.UTF_8));
         } else {
-            stream = new ClassPathResource("service-account.json").getInputStream();
+            ClassPathResource resource = new ClassPathResource("service-account.json");
+            if (!resource.exists()) {
+                throw new IllegalStateException(
+                        "Google Play 서비스 계정 자격증명이 없습니다. "
+                                + "GOOGLE_SERVICE_ACCOUNT_JSON 환경변수를 설정하세요."
+                );
+            }
+            log.warn("service-account.json(classpath)을 사용합니다. 운영에서는 GOOGLE_SERVICE_ACCOUNT_JSON을 사용하세요.");
+            stream = resource.getInputStream();
         }
 
-        GoogleCredentials credentials = GoogleCredentials
+        return GoogleCredentials
                 .fromStream(stream)
                 .createScoped(List.of("https://www.googleapis.com/auth/androidpublisher"));
-        credentials.refreshIfExpired();
-        return credentials.getAccessToken().getTokenValue();
     }
 
     private Instant parseInstant(String value) {
