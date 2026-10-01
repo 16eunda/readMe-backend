@@ -46,7 +46,7 @@ class FileDuplicateRegistrationTest {
 
     @Test
     void duplicateCheckIsDeviceScopedButRegistrationStillAllowsDuplicate() {
-        when(fileRepository.existsByDeviceIdAndTitleAndPath("device-a", "book.epub", "root"))
+        when(fileRepository.existsByDeviceIdAndUserIsNullAndTitleAndPath("device-a", "book.epub", "root"))
                 .thenReturn(true);
         when(fileRepository.saveAndFlush(any())).thenAnswer(invocation -> {
             FileEntity saved = invocation.getArgument(0);
@@ -56,7 +56,7 @@ class FileDuplicateRegistrationTest {
         when(subscriptionService.isPremium(null, "device-a")).thenReturn(false);
         when(fileRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
-        assertEquals(true, fileService.isDuplicate("device-a", "book.epub", "root"));
+        assertEquals(true, fileService.isDuplicate("device-a", "book.epub", "root", null));
         FileEntity saved = fileService.saveFile(file(), "device-a", null);
 
         assertEquals(1L, saved.getId());

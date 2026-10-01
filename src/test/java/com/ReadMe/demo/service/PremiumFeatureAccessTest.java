@@ -38,6 +38,8 @@ class PremiumFeatureAccessTest {
     private SubscriptionService subscriptionService;
     @Mock
     private RankingService rankingService;
+    @Mock
+    private AnalysisStateService analysisState;
 
     @Test
     void aiInfoHidesExistingAnalysisWhenSubscriptionIsExpired() {
@@ -46,10 +48,10 @@ class PremiumFeatureAccessTest {
         file.setTitle("book.epub");
         file.setAnalysisStatus("DONE");
         file.setAiGenre("fantasy");
-        when(fileRepository.findByIdAndDeviceId(1L, "device-a")).thenReturn(Optional.of(file));
+        when(fileRepository.findByIdAndDeviceIdAndUserIsNull(1L, "device-a")).thenReturn(Optional.of(file));
         when(subscriptionService.isPremium(null, "device-a")).thenReturn(false);
 
-        AiAnalysisService service = new AiAnalysisService(fileRepository, geminiService, subscriptionService);
+        AiAnalysisService service = new AiAnalysisService(fileRepository, geminiService, subscriptionService, analysisState);
 
         AiInfoResponse response = service.getAiInfo(1L, "device-a", null);
 

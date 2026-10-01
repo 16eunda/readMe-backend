@@ -71,6 +71,19 @@ public class FileService {
             throw new IllegalArgumentException("txt 또는 epub 파일만 등록할 수 있습니다.");
         }
 
+        // 요청 본문은 FileEntity 로 바로 받으므로 서버가 정하는 값은 여기서 비운다.
+        // id 를 비우지 않으면 남의 파일 id 를 넣어 그 파일을 덮어쓰고, user 를 비우지 않으면 남의 서재에 파일을 넣을 수 있다.
+        file.setId(null);
+        file.setUser(null);
+        file.setAiGenre(null);
+        file.setAiKeywords(null);
+        file.setAiMood(null);
+        file.setAiContent(null);
+        file.setAiSummary(null);
+        file.setAiTarget(null);
+        file.setAiAnalyzedAt(null);
+        file.setAnalysisStartedAt(null);
+
         // AI 후처리가 실패해도 소유권과 기본 상태가 완성된 파일은 남긴다.
         file.setCompleted(false);
         file.setDeviceId(deviceId);
@@ -111,10 +124,11 @@ public class FileService {
                 saved.setAnalysisStatus("DONE");
                 System.out.println("♻️ 기존 AI 분석 결과 복사 완료: " + normalized);
             } else {
-                saved.setAnalysisStatus("QUEUED");
-                fileRepository.save(saved);
-                queueService.enqueue(saved.getId());
+                requestAnalysis(saved.getId());
                 System.out.println("🤖 프리미엄 유저 → AI 분석 큐 등록: " + normalized);
+                // 여기서 엔티티를 바꾸거나 다시 저장하지 않는다. 워커가 먼저 끝낸 분석 결과를 옛 값으로 덮어쓸 수 있다.
+                // (응답 FileDto 에는 분석 상태가 없다)
+                return saved;
             }
         } catch (RuntimeException e) {
             saved.setAnalysisStatus("FAILED");
@@ -210,7 +224,7 @@ public class FileService {
                     .orElseThrow(() -> new FileNotFoundException(fileId));
         }
         if (deviceId != null && !deviceId.isBlank()) {
-            return fileRepository.findByIdAndDeviceId(fileId, deviceId)
+            return fileRepository.findByIdAndDeviceIdAndUserIsNull(fileId, deviceId)
                     .orElseThrow(() -> new FileNotFoundException(fileId));
         }
         throw new UnauthorizedException("인증 정보 없음");
@@ -340,7 +354,7 @@ public class FileService {
         if (user != null) {
             fileRepository.deleteByUserAndIdIn(user, ids);
         } else if (deviceId != null && !deviceId.isBlank()) {
-            fileRepository.deleteByDeviceIdAndIdIn(deviceId, ids);
+            fileRepository.deleteByDeviceIdAndUserIsNullAndIdIn(deviceId, ids);
         } else {
             // deviceId 없이 삭제하면 device_id IS NULL 조건이 되어 소유자를 확인할 수 없다.
             throw new UnauthorizedException("인증 정보 없음");
@@ -395,8 +409,8 @@ public class FileService {
             }
 
             if (subscriptionService.isPremium(user, deviceId)) {
-                file.setAnalysisStatus("QUEUED");
-                queueService.enqueue(file.getId());
+                // 상태는 조건부 UPDATE 로만 바꾼다. 엔티티 값을 바꾸면 이 트랜잭션이 끝날 때 분석 컬럼까지 다시 쓰게 된다.
+                requestAnalysis(file.getId());
             }
         }
 
@@ -419,12 +433,23 @@ public class FileService {
         return fileRepository.save(file);
     }
 
-    // 중복 여부 판단
-    public boolean isDuplicate(String deviceId, String title, String path) {
+    // 중복 여부 판단 (안내용). 요청자 화면에 보이는 목록과 같은 범위에서 찾는다.
+    public boolean isDuplicate(String deviceId, String title, String path, Authentication authentication) {
+        Long userId = extractUserId(authentication);
+        if (userId != null) {
+            return fileRepository.existsByUser_IdAndTitleAndPath(userId, title, path);
+        }
         if (deviceId == null || deviceId.isBlank()) {
             throw new IllegalArgumentException("X-Device-Id 헤더가 필요합니다.");
         }
-        return fileRepository.existsByDeviceIdAndTitleAndPath(deviceId, title, path);
+        return fileRepository.existsByDeviceIdAndUserIsNullAndTitleAndPath(deviceId, title, path);
+    }
+
+    // 분석 대기로 바꾼 경우에만 큐에 넣는다. 이미 대기·분석 중·완료인 파일은 다시 넣지 않는다.
+    private void requestAnalysis(Long fileId) {
+        if (fileRepository.markAnalysisQueued(fileId) > 0) {
+            queueService.enqueue(fileId);
+        }
     }
 
     // 최근 읽은 파일 조회 (히스토리)
