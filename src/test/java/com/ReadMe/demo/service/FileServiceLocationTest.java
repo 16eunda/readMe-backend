@@ -40,12 +40,6 @@ class FileServiceLocationTest {
     @Mock
     private FileReadLogRepository readLogRepository;
     @Mock
-    private GeminiService geminiService;
-    @Mock
-    private QueueService queueService;
-    @Mock
-    private SubscriptionService subscriptionService;
-    @Mock
     private Authentication authentication;
     @Mock
     private CustomUserDetails userDetails;
@@ -54,13 +48,7 @@ class FileServiceLocationTest {
 
     @BeforeEach
     void setUp() {
-        fileService = new FileService(
-                fileRepository,
-                readLogRepository,
-                geminiService,
-                queueService,
-                subscriptionService
-        );
+        fileService = new FileService(fileRepository, readLogRepository);
     }
 
     @Test

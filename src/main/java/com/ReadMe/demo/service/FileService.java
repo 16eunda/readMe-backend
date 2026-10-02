@@ -34,9 +34,6 @@ public class FileService {
 
     private final FileRepository fileRepository;
     private final FileReadLogRepository readLogRepository;
-    private final GeminiService geminiService;
-    private final QueueService queueService;
-    private final SubscriptionService subscriptionService;
 
     // 제목 정규화 (확장자 제거)
     // "MyBook.epub" -> "MyBook"

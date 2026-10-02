@@ -33,8 +33,6 @@ class PremiumFeatureAccessTest {
     @Mock
     private GeminiService geminiService;
     @Mock
-    private QueueService queueService;
-    @Mock
     private SubscriptionService subscriptionService;
     @Mock
     private RankingService rankingService;
@@ -66,13 +64,7 @@ class PremiumFeatureAccessTest {
 
     @Test
     void fileRegistrationDoesNotReuseExistingAnalysisWhenSubscriptionIsExpired() {
-        FileService service = new FileService(
-                fileRepository,
-                readLogRepository,
-                geminiService,
-                queueService,
-                subscriptionService
-        );
+        FileService service = new FileService(fileRepository, readLogRepository);
         FileEntity file = new FileEntity();
         file.setTitle("book.epub");
         file.setPath("root");
@@ -91,7 +83,6 @@ class PremiumFeatureAccessTest {
                 org.mockito.ArgumentMatchers.any(),
                 org.mockito.ArgumentMatchers.any()
         );
-        verify(queueService, never()).enqueue(org.mockito.ArgumentMatchers.anyLong());
     }
 
     @Test

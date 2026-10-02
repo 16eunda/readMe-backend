@@ -14,7 +14,7 @@ import java.time.Instant;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.when;
 
@@ -25,24 +25,12 @@ class FileDuplicateRegistrationTest {
     private FileRepository fileRepository;
     @Mock
     private FileReadLogRepository readLogRepository;
-    @Mock
-    private GeminiService geminiService;
-    @Mock
-    private QueueService queueService;
-    @Mock
-    private SubscriptionService subscriptionService;
 
     private FileService fileService;
 
     @BeforeEach
     void setUp() {
-        fileService = new FileService(
-                fileRepository,
-                readLogRepository,
-                geminiService,
-                queueService,
-                subscriptionService
-        );
+        fileService = new FileService(fileRepository, readLogRepository);
     }
 
     @Test
@@ -81,9 +69,9 @@ class FileDuplicateRegistrationTest {
         verify(fileRepository, never()).findOwnAnalyzedSameTitle(any(), any(), any(), any());
     }
 
-    // 구독자가 등록해도 여기서는 분석하지 않는다. 분석은 AnalysisBacklogScheduler 가 맡는다.
+    // 등록은 저장만 한다. 분석(같은 제목 결과 복사 포함)은 AnalysisBacklogScheduler 가 맡는다.
     @Test
-    void registrationLeavesAnalysisToBackgroundEvenForPremium() {
+    void registrationOnlySavesAndLeavesAnalysisToBackground() {
         when(fileRepository.saveAndFlush(any())).thenAnswer(invocation -> {
             FileEntity saved = invocation.getArgument(0);
             saved.setId(1L);
@@ -94,8 +82,8 @@ class FileDuplicateRegistrationTest {
 
         assertEquals(1L, saved.getId());
         assertEquals("PENDING", saved.getAnalysisStatus());
-        verifyNoInteractions(subscriptionService, queueService, geminiService);
-        verify(fileRepository, never()).findOwnAnalyzedSameTitle(any(), any(), any(), any());
+        verify(fileRepository).saveAndFlush(any());
+        verifyNoMoreInteractions(fileRepository);
     }
 
     private FileEntity file() {
