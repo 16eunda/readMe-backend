@@ -12,12 +12,12 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 public class QueueService {
 
     private final ConcurrentLinkedQueue<Long> queue = new ConcurrentLinkedQueue<>();
-    // 큐에 들어 있는 파일 id. 파일 등록·읽기·주기 점검이 같은 파일을 여러 번 넣어도 한 번만 대기시킨다.
+    // 큐에 들어 있는 파일 id. 주기 점검이 아직 처리되지 않은 파일을 다시 골라도 한 번만 대기시킨다.
     private final Set<Long> queuedIds = ConcurrentHashMap.newKeySet();
     // getAiInfo 직접 요청용 큐 (일일 제한 제외)
     private final ConcurrentLinkedQueue<Long> priorityQueue = new ConcurrentLinkedQueue<>();
 
-    // 파일 추가 시 자동 분석 (일일 제한 적용). 이미 대기 중인 파일이면 넣지 않고 false 를 돌려준다.
+    // 자동 분석 (일일 제한 적용). 이미 대기 중인 파일이면 넣지 않고 false 를 돌려준다.
     // 이 큐는 메모리에만 있어 서버가 재시작되면 사라진다. DB 상태를 기준으로 AnalysisBacklogScheduler 가 다시 채운다.
     public boolean enqueue(Long fileId) {
         if (!queuedIds.add(fileId)) {

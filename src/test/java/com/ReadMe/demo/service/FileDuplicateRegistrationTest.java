@@ -14,6 +14,7 @@ import java.time.Instant;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.when;
 
@@ -53,8 +54,6 @@ class FileDuplicateRegistrationTest {
             saved.setId(1L);
             return saved;
         });
-        when(subscriptionService.isPremium(null, "device-a")).thenReturn(false);
-        when(fileRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
         assertEquals(true, fileService.isDuplicate("device-a", "book.epub", "root", null));
         FileEntity saved = fileService.saveFile(file(), "device-a", null);
@@ -74,8 +73,6 @@ class FileDuplicateRegistrationTest {
             saved.setId(1L);
             return saved;
         });
-        when(subscriptionService.isPremium(null, "device-a")).thenReturn(false);
-        when(fileRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
         FileEntity saved = fileService.saveFile(file, "device-a", null);
 
@@ -84,23 +81,21 @@ class FileDuplicateRegistrationTest {
         verify(fileRepository, never()).findOwnAnalyzedSameTitle(any(), any(), any(), any());
     }
 
+    // 구독자가 등록해도 여기서는 분석하지 않는다. 분석은 AnalysisBacklogScheduler 가 맡는다.
     @Test
-    void keepsRegisteredFileAndMarksFailedWhenAiPostProcessingFails() {
-        FileEntity file = file();
+    void registrationLeavesAnalysisToBackgroundEvenForPremium() {
         when(fileRepository.saveAndFlush(any())).thenAnswer(invocation -> {
             FileEntity saved = invocation.getArgument(0);
             saved.setId(1L);
             return saved;
         });
-        when(subscriptionService.isPremium(null, "device-a")).thenReturn(true);
-        when(fileRepository.findOwnAnalyzedSameTitle("book", 1L, null, "device-a"))
-                .thenThrow(new RuntimeException("AI lookup failed"));
-        when(fileRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
-        FileEntity saved = fileService.saveFile(file, "device-a", null);
+        FileEntity saved = fileService.saveFile(file(), "device-a", null);
 
         assertEquals(1L, saved.getId());
-        assertEquals("FAILED", saved.getAnalysisStatus());
+        assertEquals("PENDING", saved.getAnalysisStatus());
+        verifyNoInteractions(subscriptionService, queueService, geminiService);
+        verify(fileRepository, never()).findOwnAnalyzedSameTitle(any(), any(), any(), any());
     }
 
     private FileEntity file() {

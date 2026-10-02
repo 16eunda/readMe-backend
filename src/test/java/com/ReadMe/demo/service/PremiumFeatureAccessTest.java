@@ -81,8 +81,6 @@ class PremiumFeatureAccessTest {
             saved.setId(1L);
             return saved;
         });
-        when(subscriptionService.isPremium(null, "device-a")).thenReturn(false);
-        when(fileRepository.save(org.mockito.ArgumentMatchers.any())).thenAnswer(invocation -> invocation.getArgument(0));
 
         FileEntity saved = service.saveFile(file, "device-a", null);
 

@@ -46,7 +46,6 @@ public class FileService {
     }
 
     // 파일 저장
-    // 파일 저장과 동시에 AI 분석도 트리거 (중복 체크 포함)
     public FileEntity saveFile(FileEntity file, String deviceId, Authentication authentication) {
         if (deviceId == null || deviceId.isBlank()) {
             throw new IllegalArgumentException("X-Device-Id 헤더가 필요합니다.");
@@ -84,7 +83,6 @@ public class FileService {
         file.setAiAnalyzedAt(null);
         file.setAnalysisStartedAt(null);
 
-        // AI 후처리가 실패해도 소유권과 기본 상태가 완성된 파일은 남긴다.
         file.setCompleted(false);
         file.setDeviceId(deviceId);
         file.setAnalysisStatus("PENDING");
@@ -96,46 +94,9 @@ public class FileService {
             file.setUser(user);
         }
 
-        // 완성된 기본 상태로 먼저 등록한다. 중복 여부는 /files/check에서 안내만 한다.
-        FileEntity saved = fileRepository.saveAndFlush(file);
-
-        try {
-            if (!subscriptionService.isPremium(saved.getUser(), deviceId)) {
-                System.out.println("⏸️ 비프리미엄 → AI 분석 대기: " + normalized);
-                return fileRepository.save(saved);
-            }
-
-            // 같은 제목의 기존 분석 결과는 "본인" 파일에서만 재사용한다.
-            // 전역 재사용은 서로 다른 사용자의 파일끼리 분석 결과를 섞어버린다.
-            FileEntity existing = fileRepository.findOwnAnalyzedSameTitle(
-                    normalized,
-                    saved.getId(),
-                    saved.getUser() != null ? saved.getUser().getId() : null,
-                    deviceId
-            );
-
-            if (existing != null) {
-                saved.setAiGenre(existing.getAiGenre());
-                saved.setAiKeywords(existing.getAiKeywords());
-                saved.setAiMood(existing.getAiMood());
-                saved.setAiSummary(existing.getAiSummary());
-                saved.setAiTarget(existing.getAiTarget());
-                saved.setAiAnalyzedAt(LocalDateTime.now());
-                saved.setAnalysisStatus("DONE");
-                System.out.println("♻️ 기존 AI 분석 결과 복사 완료: " + normalized);
-            } else {
-                requestAnalysis(saved.getId());
-                System.out.println("🤖 프리미엄 유저 → AI 분석 큐 등록: " + normalized);
-                // 여기서 엔티티를 바꾸거나 다시 저장하지 않는다. 워커가 먼저 끝낸 분석 결과를 옛 값으로 덮어쓸 수 있다.
-                // (응답 FileDto 에는 분석 상태가 없다)
-                return saved;
-            }
-        } catch (RuntimeException e) {
-            saved.setAnalysisStatus("FAILED");
-            System.out.println("❌ 파일 등록 후 AI 후처리 실패: " + e.getMessage());
-        }
-
-        return fileRepository.save(saved);
+        // 분석은 여기서 요청하지 않는다. 구독자의 분석 안 된 책은 AnalysisBacklogScheduler 가 1분 안에 대기열에 넣는다.
+        // 중복 여부는 /files/check에서 안내만 한다.
+        return fileRepository.saveAndFlush(file);
     }
 
     // 파일조회
@@ -398,21 +359,7 @@ public class FileService {
         // 완독 여부 업데이트
         file.setCompleted(completed);
 
-        // 👇 미분석 파일이면 프리미엄 유저일 때 큐에 분석 요청
-        if (!"DONE".equals(file.getAnalysisStatus()) && !"QUEUED".equals(file.getAnalysisStatus())
-                && !"PROCESSING".equals(file.getAnalysisStatus())) {
-
-            UserEntity user = null;
-            if (authentication != null && authentication.isAuthenticated()
-                    && authentication.getPrincipal() instanceof CustomUserDetails) {
-                user = ((CustomUserDetails) authentication.getPrincipal()).getUser();
-            }
-
-            if (subscriptionService.isPremium(user, deviceId)) {
-                // 상태는 조건부 UPDATE 로만 바꾼다. 엔티티 값을 바꾸면 이 트랜잭션이 끝날 때 분석 컬럼까지 다시 쓰게 된다.
-                requestAnalysis(file.getId());
-            }
-        }
+        // 분석은 여기서 요청하지 않는다. 책을 열면 lastReadAt 이 바뀌어(recordRead) 주기 점검에서 먼저 분석된다.
 
         // 👇 읽기 로그 기록 (같은 날은 1회만)
         if (body.containsKey("recordReadLog") && Boolean.TRUE.equals(body.get("recordReadLog"))) {
@@ -443,13 +390,6 @@ public class FileService {
             throw new IllegalArgumentException("X-Device-Id 헤더가 필요합니다.");
         }
         return fileRepository.existsByDeviceIdAndUserIsNullAndTitleAndPath(deviceId, title, path);
-    }
-
-    // 분석 대기로 바꾼 경우에만 큐에 넣는다. 이미 대기·분석 중·완료인 파일은 다시 넣지 않는다.
-    private void requestAnalysis(Long fileId) {
-        if (fileRepository.markAnalysisQueued(fileId) > 0) {
-            queueService.enqueue(fileId);
-        }
     }
 
     // 최근 읽은 파일 조회 (히스토리)

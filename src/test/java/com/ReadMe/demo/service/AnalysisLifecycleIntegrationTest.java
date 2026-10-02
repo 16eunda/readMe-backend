@@ -100,7 +100,8 @@ class AnalysisLifecycleIntegrationTest {
         String token = api.signupAndLogin(username, phone);
         activatePremium(username);
         long fileId = api.registerFile("Book.epub", "root", token, phone).path("id").asLong();
-        assertThat(queueService.dequeue()).isEqualTo(fileId);
+        backlogScheduler.enqueueBacklog();
+        assertThat(takeQueue()).containsExactly(fileId);
 
         doAnswer(invocation -> {
             // 사용자가 책을 읽는 동안 앱이 보내는 요청들
@@ -165,9 +166,8 @@ class AnalysisLifecycleIntegrationTest {
         for (String title : List.of("R1.epub", "R2.epub", "R3.epub", "R4.epub")) {
             ids.add(api.registerFile(title, "root", token, phone).path("id").asLong());
         }
-        // 읽기 진행도 저장·주기 점검이 겹쳐도 큐에는 파일마다 한 번
-        api.send("PATCH", "/files/" + ids.get(0) + "/progress", "{\"progress\":0.1}", token, phone);
-        api.send("PATCH", "/files/" + ids.get(0) + "/progress", "{\"progress\":0.2}", token, phone);
+        // 주기 점검이 여러 번 돌아도 큐에는 파일마다 한 번
+        backlogScheduler.enqueueBacklog();
         backlogScheduler.enqueueBacklog();
         assertThat(takeQueue()).containsExactlyInAnyOrderElementsOf(ids);
 
@@ -194,7 +194,8 @@ class AnalysisLifecycleIntegrationTest {
         String token = api.signupAndLogin(username, phone);
         activatePremium(username);
         long fileId = api.registerFile("Same.epub", "root", token, phone).path("id").asLong();
-        assertThat(queueService.dequeue()).isEqualTo(fileId);
+        backlogScheduler.enqueueBacklog();
+        assertThat(takeQueue()).containsExactly(fileId);
 
         CountDownLatch workerCalledAi = new CountDownLatch(1);
         CountDownLatch aiResponds = new CountDownLatch(1);
@@ -240,6 +241,7 @@ class AnalysisLifecycleIntegrationTest {
         doThrow(new AiAnalysisFailedException("timeout")).when(geminiService).analyzeText(any(), eq("NetB.epub"));
         doThrow(new AiAnalysisFailedException("timeout")).when(geminiService).analyzeText(any(), eq("NetD.epub"));
 
+        backlogScheduler.enqueueBacklog();
         drainAndAnalyze();
 
         assertThat(statuses(List.of(a, c))).containsOnly("DONE");
@@ -272,6 +274,7 @@ class AnalysisLifecycleIntegrationTest {
         String token = api.signupAndLogin(username, phone);
         activatePremium(username);
         long fileId = api.registerFile("Done.epub", "root", token, phone).path("id").asLong();
+        backlogScheduler.enqueueBacklog();
         drainAndAnalyze();
 
         // 앱 재실행 후 다시 열기
@@ -293,6 +296,7 @@ class AnalysisLifecycleIntegrationTest {
         String token = api.signupAndLogin(username, phone);
         Subscription subscription = activatePremium(username);
         long analyzed = api.registerFile("Kept.epub", "root", token, phone).path("id").asLong();
+        backlogScheduler.enqueueBacklog();
         drainAndAnalyze();
 
         subscription.setStatus(SubscriptionStatus.EXPIRED);
@@ -313,11 +317,10 @@ class AnalysisLifecycleIntegrationTest {
         assertThat(reused.path("genre").asText()).isEqualTo("판타지");
         verify(geminiService, times(1)).analyzeText(any(), any());
 
-        // 만료 중 등록한 파일을 열어 읽으면 바로 대기열에 들어가고, 주기 점검이 겹쳐도 한 번만 대기한다.
+        // 만료 중 등록한 파일은 재구독 후 주기 점검이 한 번만 대기열에 넣는다.
         api.send("PATCH", "/files/" + whileExpired + "/progress", "{\"progress\":0.3}", token, phone);
-        FileEntity reading = fileRepository.findById(whileExpired).orElseThrow();
-        assertThat(reading.getAnalysisStatus()).isEqualTo("QUEUED");
-        assertThat(reading.getProgress()).isEqualTo(0.3);
+        assertThat(fileRepository.findById(whileExpired).orElseThrow().getProgress()).isEqualTo(0.3);
+        backlogScheduler.enqueueBacklog();
         backlogScheduler.enqueueBacklog();
         assertThat(takeQueue()).containsExactly(whileExpired);
     }
@@ -380,7 +383,8 @@ class AnalysisLifecycleIntegrationTest {
         guestSubscription.setExpiresAt(Instant.now().plusSeconds(3600));
         subscriptionRepository.save(guestSubscription);
         long fileId = api.registerFile("During.epub", "root", null, phone).path("id").asLong();
-        assertThat(queueService.dequeue()).isEqualTo(fileId);
+        backlogScheduler.enqueueBacklog();
+        assertThat(takeQueue()).containsExactly(fileId);
 
         String username = username();
         String[] token = new String[1];
@@ -400,7 +404,93 @@ class AnalysisLifecycleIntegrationTest {
         verify(geminiService, times(1)).analyzeText(any(), any());
     }
 
+    // 등록·읽기는 분석을 직접 요청하지 않는다. 구독자의 분석 안 된 책은 주기 점검 한 곳에서만 대기열에 들어간다.
+    @Test
+    void registeringAndReadingLeaveAnalysisToBackground() throws Exception {
+        String phone = device();
+        String username = username();
+        String token = api.signupAndLogin(username, phone);
+        activatePremium(username);
+        long fileId = api.registerFile("Later.epub", "root", token, phone).path("id").asLong();
+        api.send("POST", "/files/" + fileId + "/read", null, token, phone);
+        api.send("PATCH", "/files/" + fileId + "/progress", "{\"progress\":0.2}", token, phone);
+
+        assertThat(takeQueue()).isEmpty();
+        assertThat(fileRepository.findById(fileId).orElseThrow().getAnalysisStatus()).isEqualTo("PENDING");
+
+        backlogScheduler.enqueueBacklog();
+        assertThat(takeQueue()).containsExactly(fileId);
+    }
+
+    // 하루 한도보다 밀린 책이 많으면 최근 읽은 책 → 최근 등록한 책 순으로 분석하고, 가장 오래 안 읽은 책이 다음 날로 밀린다.
+    @Test
+    void backlogAnalyzesRecentlyReadBooksFirstThenNewestRegistered() throws Exception {
+        String phone = device();
+        String username = username();
+        String token = api.signupAndLogin(username, phone);
+        List<Long> ids = new ArrayList<>();
+        for (int i = 0; i < 12; i++) {
+            ids.add(api.registerFile("Order" + i + ".epub", "root", token, phone).path("id").asLong());
+        }
+        // 가장 먼저 등록한 두 권을 읽었다. Order1 을 더 최근에 읽었다.
+        setLastReadAt(ids.get(0), LocalDateTime.now().minusDays(2));
+        setLastReadAt(ids.get(1), LocalDateTime.now().minusHours(1));
+        activatePremium(username);
+
+        backlogScheduler.enqueueBacklog();
+        List<Long> queued = takeQueue();
+
+        List<Long> expected = new ArrayList<>(List.of(ids.get(1), ids.get(0)));
+        for (int i = 11; i >= 2; i--) {
+            expected.add(ids.get(i));
+        }
+        assertThat(queued).containsExactlyElementsOf(expected);
+
+        queued.forEach(queueService::enqueue);
+        drainAndAnalyze();
+        assertThat(statuses(expected.subList(0, 10))).containsOnly("DONE");
+        assertThat(statuses(List.of(ids.get(3), ids.get(2)))).containsOnly("LIMIT_EXCEEDED");
+    }
+
+    // 같은 제목으로 이미 분석된 내 책이 있으면 AI 를 부르지 않고 복사하므로, 오늘 한도를 다 썼어도 바로 채운다.
+    @Test
+    void sameTitleCopyIsNotBlockedByDailyLimit() throws Exception {
+        String phone = device();
+        String username = username();
+        String token = api.signupAndLogin(username, phone);
+        activatePremium(username);
+        api.registerFile("Twice.epub", "root", token, phone);
+        backlogScheduler.enqueueBacklog();
+        drainAndAnalyze();
+        useUpTodayLimit(username);
+
+        long copy = api.registerFile("Twice.epub", "root", token, phone).path("id").asLong();
+        backlogScheduler.enqueueBacklog();
+        drainAndAnalyze();
+
+        FileEntity copied = fileRepository.findById(copy).orElseThrow();
+        assertThat(copied.getAnalysisStatus()).isEqualTo("DONE");
+        assertThat(copied.getAiGenre()).isEqualTo("판타지");
+        verify(geminiService, times(1)).analyzeText(any(), any());
+    }
+
     // ── helpers ──
+
+    private void setLastReadAt(Long fileId, LocalDateTime readAt) {
+        FileEntity file = fileRepository.findById(fileId).orElseThrow();
+        file.setLastReadAt(readAt);
+        fileRepository.save(file);
+    }
+
+    private void useUpTodayLimit(String username) {
+        UserEntity user = userRepository.findByUsername(username).orElseThrow();
+        for (int i = 0; i < 10; i++) {
+            analysisLogRepository.save(AiAnalysisLog.builder()
+                    .user(user)
+                    .analyzedAt(LocalDateTime.now())
+                    .build());
+        }
+    }
 
     private List<Long> takeQueue() {
         List<Long> ids = new ArrayList<>();

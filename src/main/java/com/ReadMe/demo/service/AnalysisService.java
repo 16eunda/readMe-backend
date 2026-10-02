@@ -30,6 +30,7 @@ public class AnalysisService {
      * 큐에서 호출되는 분석 메서드
      * - 한 곳만 분석하도록 먼저 "분석 중"으로 선점
      * - 프리미엄 체크
+     * - 같은 제목 본인 파일의 분석 결과 복사 (AI 호출 없음)
      * - 일일 제한 체크 (bypassLimit=true면 스킵 → getAiInfo 직접 요청용)
      * - 분석 실행 + 로그 기록
      */
@@ -62,16 +63,8 @@ public class AnalysisService {
                 return;
             }
 
-            // 일일 제한 체크 (파일 추가 시 자동 분석에만 적용, getAiInfo 직접 요청은 제외)
-            // 한도를 넘은 파일은 AnalysisBacklogScheduler 가 다음 날 다시 큐에 넣는다.
-            if (!bypassLimit && !canAnalyzeToday(user, deviceId)) {
-                log.info("🚫 오늘 AI 분석 한도 초과 ({}/{}): {}",
-                        DAILY_LIMIT, DAILY_LIMIT, file.getTitle());
-                analysisState.release(fileId, "LIMIT_EXCEEDED");
-                return;
-            }
-
             // 같은 제목의 이미 분석된 "본인" 파일 있으면 복사 (API 호출 없음, 횟수 차감 없음)
+            // AI 를 부르지 않으므로 하루 한도를 확인하기 전에 한다.
             FileEntity existing = fileRepository.findOwnAnalyzedSameTitle(
                     file.getNormalizedTitle(),
                     file.getId(),
@@ -82,6 +75,15 @@ public class AnalysisService {
             if (existing != null) {
                 analysisState.completeByCopy(fileId, existing);
                 log.info("기존 분석 복사 (횟수 차감 없음): {}", file.getTitle());
+                return;
+            }
+
+            // 일일 제한 체크 (자동 분석에만 적용, getAiInfo 직접 요청은 제외)
+            // 한도를 넘은 파일은 AnalysisBacklogScheduler 가 다음 날 다시 큐에 넣는다.
+            if (!bypassLimit && !canAnalyzeToday(user, deviceId)) {
+                log.info("🚫 오늘 AI 분석 한도 초과 ({}/{}): {}",
+                        DAILY_LIMIT, DAILY_LIMIT, file.getTitle());
+                analysisState.release(fileId, "LIMIT_EXCEEDED");
                 return;
             }
 

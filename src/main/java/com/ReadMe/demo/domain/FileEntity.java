@@ -28,7 +28,10 @@ import java.util.List;
             @Index(name = "idx_file_user_path_date_id", columnList = "user_id, path, date, id"),
             @Index(name = "idx_file_user_path_rating_id", columnList = "user_id, path, rating, id"),
             @Index(name = "idx_file_device_path_date_id", columnList = "device_id, path, date, id"),
-            @Index(name = "idx_file_device_path_rating_id", columnList = "device_id, path, rating, id")
+            @Index(name = "idx_file_device_path_rating_id", columnList = "device_id, path, rating, id"),
+
+            // 1분마다 도는 분석 대기 점검(findAnalysisBacklogIds)이 분석 완료(DONE)된 책을 훑지 않고 남은 책만 찾게 한다.
+            @Index(name = "idx_file_analysis_status", columnList = "analysis_status")
         }
 )
 @NoArgsConstructor
@@ -72,8 +75,9 @@ public class FileEntity {
     @Column(nullable = false)
     private boolean completed;
 
-    // PENDING(아직 분석 안 함) → QUEUED(분석 대기) → PROCESSING(분석 중) → DONE(완료)
+    // PENDING(아직 분석 안 함) → PROCESSING(분석 중) → DONE(완료)
     // 재시도 대상: FAILED(실패), LIMIT_EXCEEDED(오늘 자동 분석 한도 초과)
+    // QUEUED 는 예전 버전이 남긴 값이다. PENDING 과 똑같이 분석 대상으로 본다.
     @Column
     private String analysisStatus;
 
