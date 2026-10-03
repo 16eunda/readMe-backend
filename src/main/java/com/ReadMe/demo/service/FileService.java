@@ -34,9 +34,6 @@ public class FileService {
 
     private final FileRepository fileRepository;
     private final FileReadLogRepository readLogRepository;
-    private final GeminiService geminiService;
-    private final QueueService queueService;
-    private final SubscriptionService subscriptionService;
 
     // 제목 정규화 (확장자 제거)
     // "MyBook.epub" -> "MyBook"
@@ -46,7 +43,6 @@ public class FileService {
     }
 
     // 파일 저장
-    // 파일 저장과 동시에 AI 분석도 트리거 (중복 체크 포함)
     public FileEntity saveFile(FileEntity file, String deviceId, Authentication authentication) {
         if (deviceId == null || deviceId.isBlank()) {
             throw new IllegalArgumentException("X-Device-Id 헤더가 필요합니다.");
@@ -71,7 +67,19 @@ public class FileService {
             throw new IllegalArgumentException("txt 또는 epub 파일만 등록할 수 있습니다.");
         }
 
-        // AI 후처리가 실패해도 소유권과 기본 상태가 완성된 파일은 남긴다.
+        // 요청 본문은 FileEntity 로 바로 받으므로 서버가 정하는 값은 여기서 비운다.
+        // id 를 비우지 않으면 남의 파일 id 를 넣어 그 파일을 덮어쓰고, user 를 비우지 않으면 남의 서재에 파일을 넣을 수 있다.
+        file.setId(null);
+        file.setUser(null);
+        file.setAiGenre(null);
+        file.setAiKeywords(null);
+        file.setAiMood(null);
+        file.setAiContent(null);
+        file.setAiSummary(null);
+        file.setAiTarget(null);
+        file.setAiAnalyzedAt(null);
+        file.setAnalysisStartedAt(null);
+
         file.setCompleted(false);
         file.setDeviceId(deviceId);
         file.setAnalysisStatus("PENDING");
@@ -83,45 +91,9 @@ public class FileService {
             file.setUser(user);
         }
 
-        // 완성된 기본 상태로 먼저 등록한다. 중복 여부는 /files/check에서 안내만 한다.
-        FileEntity saved = fileRepository.saveAndFlush(file);
-
-        try {
-            if (!subscriptionService.isPremium(saved.getUser(), deviceId)) {
-                System.out.println("⏸️ 비프리미엄 → AI 분석 대기: " + normalized);
-                return fileRepository.save(saved);
-            }
-
-            // 같은 제목의 기존 분석 결과는 "본인" 파일에서만 재사용한다.
-            // 전역 재사용은 서로 다른 사용자의 파일끼리 분석 결과를 섞어버린다.
-            FileEntity existing = fileRepository.findOwnAnalyzedSameTitle(
-                    normalized,
-                    saved.getId(),
-                    saved.getUser() != null ? saved.getUser().getId() : null,
-                    deviceId
-            );
-
-            if (existing != null) {
-                saved.setAiGenre(existing.getAiGenre());
-                saved.setAiKeywords(existing.getAiKeywords());
-                saved.setAiMood(existing.getAiMood());
-                saved.setAiSummary(existing.getAiSummary());
-                saved.setAiTarget(existing.getAiTarget());
-                saved.setAiAnalyzedAt(LocalDateTime.now());
-                saved.setAnalysisStatus("DONE");
-                System.out.println("♻️ 기존 AI 분석 결과 복사 완료: " + normalized);
-            } else {
-                saved.setAnalysisStatus("QUEUED");
-                fileRepository.save(saved);
-                queueService.enqueue(saved.getId());
-                System.out.println("🤖 프리미엄 유저 → AI 분석 큐 등록: " + normalized);
-            }
-        } catch (RuntimeException e) {
-            saved.setAnalysisStatus("FAILED");
-            System.out.println("❌ 파일 등록 후 AI 후처리 실패: " + e.getMessage());
-        }
-
-        return fileRepository.save(saved);
+        // 분석은 여기서 요청하지 않는다. 구독자의 분석 안 된 책은 AnalysisBacklogScheduler 가 1분 안에 대기열에 넣는다.
+        // 중복 여부는 /files/check에서 안내만 한다.
+        return fileRepository.saveAndFlush(file);
     }
 
     // 파일조회
@@ -210,7 +182,7 @@ public class FileService {
                     .orElseThrow(() -> new FileNotFoundException(fileId));
         }
         if (deviceId != null && !deviceId.isBlank()) {
-            return fileRepository.findByIdAndDeviceId(fileId, deviceId)
+            return fileRepository.findByIdAndDeviceIdAndUserIsNull(fileId, deviceId)
                     .orElseThrow(() -> new FileNotFoundException(fileId));
         }
         throw new UnauthorizedException("인증 정보 없음");
@@ -340,7 +312,7 @@ public class FileService {
         if (user != null) {
             fileRepository.deleteByUserAndIdIn(user, ids);
         } else if (deviceId != null && !deviceId.isBlank()) {
-            fileRepository.deleteByDeviceIdAndIdIn(deviceId, ids);
+            fileRepository.deleteByDeviceIdAndUserIsNullAndIdIn(deviceId, ids);
         } else {
             // deviceId 없이 삭제하면 device_id IS NULL 조건이 되어 소유자를 확인할 수 없다.
             throw new UnauthorizedException("인증 정보 없음");
@@ -384,21 +356,7 @@ public class FileService {
         // 완독 여부 업데이트
         file.setCompleted(completed);
 
-        // 👇 미분석 파일이면 프리미엄 유저일 때 큐에 분석 요청
-        if (!"DONE".equals(file.getAnalysisStatus()) && !"QUEUED".equals(file.getAnalysisStatus())
-                && !"PROCESSING".equals(file.getAnalysisStatus())) {
-
-            UserEntity user = null;
-            if (authentication != null && authentication.isAuthenticated()
-                    && authentication.getPrincipal() instanceof CustomUserDetails) {
-                user = ((CustomUserDetails) authentication.getPrincipal()).getUser();
-            }
-
-            if (subscriptionService.isPremium(user, deviceId)) {
-                file.setAnalysisStatus("QUEUED");
-                queueService.enqueue(file.getId());
-            }
-        }
+        // 분석은 여기서 요청하지 않는다. 책을 열면 lastReadAt 이 바뀌어(recordRead) 주기 점검에서 먼저 분석된다.
 
         // 👇 읽기 로그 기록 (같은 날은 1회만)
         if (body.containsKey("recordReadLog") && Boolean.TRUE.equals(body.get("recordReadLog"))) {
@@ -419,12 +377,16 @@ public class FileService {
         return fileRepository.save(file);
     }
 
-    // 중복 여부 판단
-    public boolean isDuplicate(String deviceId, String title, String path) {
+    // 중복 여부 판단 (안내용). 요청자 화면에 보이는 목록과 같은 범위에서 찾는다.
+    public boolean isDuplicate(String deviceId, String title, String path, Authentication authentication) {
+        Long userId = extractUserId(authentication);
+        if (userId != null) {
+            return fileRepository.existsByUser_IdAndTitleAndPath(userId, title, path);
+        }
         if (deviceId == null || deviceId.isBlank()) {
             throw new IllegalArgumentException("X-Device-Id 헤더가 필요합니다.");
         }
-        return fileRepository.existsByDeviceIdAndTitleAndPath(deviceId, title, path);
+        return fileRepository.existsByDeviceIdAndUserIsNullAndTitleAndPath(deviceId, title, path);
     }
 
     // 최근 읽은 파일 조회 (히스토리)

@@ -33,11 +33,11 @@ class PremiumFeatureAccessTest {
     @Mock
     private GeminiService geminiService;
     @Mock
-    private QueueService queueService;
-    @Mock
     private SubscriptionService subscriptionService;
     @Mock
     private RankingService rankingService;
+    @Mock
+    private AnalysisStateService analysisState;
 
     @Test
     void aiInfoHidesExistingAnalysisWhenSubscriptionIsExpired() {
@@ -46,10 +46,10 @@ class PremiumFeatureAccessTest {
         file.setTitle("book.epub");
         file.setAnalysisStatus("DONE");
         file.setAiGenre("fantasy");
-        when(fileRepository.findByIdAndDeviceId(1L, "device-a")).thenReturn(Optional.of(file));
+        when(fileRepository.findByIdAndDeviceIdAndUserIsNull(1L, "device-a")).thenReturn(Optional.of(file));
         when(subscriptionService.isPremium(null, "device-a")).thenReturn(false);
 
-        AiAnalysisService service = new AiAnalysisService(fileRepository, geminiService, subscriptionService);
+        AiAnalysisService service = new AiAnalysisService(fileRepository, geminiService, subscriptionService, analysisState);
 
         AiInfoResponse response = service.getAiInfo(1L, "device-a", null);
 
@@ -64,13 +64,7 @@ class PremiumFeatureAccessTest {
 
     @Test
     void fileRegistrationDoesNotReuseExistingAnalysisWhenSubscriptionIsExpired() {
-        FileService service = new FileService(
-                fileRepository,
-                readLogRepository,
-                geminiService,
-                queueService,
-                subscriptionService
-        );
+        FileService service = new FileService(fileRepository, readLogRepository);
         FileEntity file = new FileEntity();
         file.setTitle("book.epub");
         file.setPath("root");
@@ -79,8 +73,6 @@ class PremiumFeatureAccessTest {
             saved.setId(1L);
             return saved;
         });
-        when(subscriptionService.isPremium(null, "device-a")).thenReturn(false);
-        when(fileRepository.save(org.mockito.ArgumentMatchers.any())).thenAnswer(invocation -> invocation.getArgument(0));
 
         FileEntity saved = service.saveFile(file, "device-a", null);
 
@@ -91,7 +83,6 @@ class PremiumFeatureAccessTest {
                 org.mockito.ArgumentMatchers.any(),
                 org.mockito.ArgumentMatchers.any()
         );
-        verify(queueService, never()).enqueue(org.mockito.ArgumentMatchers.anyLong());
     }
 
     @Test

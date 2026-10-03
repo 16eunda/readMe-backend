@@ -189,7 +189,7 @@ class AuthErrorStatusIntegrationTest {
         assertThat(get("/files", accessToken, deviceId).statusCode()).isEqualTo(401);
 
         // 개인 데이터는 삭제, 결제 기록은 계정 연결만 끊고 보존
-        assertThat(fileRepository.countByDeviceId(deviceId)).isZero();
+        assertThat(fileRepository.findAll()).noneMatch(file -> deviceId.equals(file.getDeviceId()));
         assertThat(fileReadLogRepository.count()).isZero();
         Subscription kept = subscriptionRepository.findByPurchaseToken(purchaseToken).orElseThrow();
         assertThat(kept.getUser()).isNull();

@@ -30,3 +30,9 @@ google:
     webhook-token: ""
     # 테스트 컨텍스트에서 실제 배치가 돌지 않도록 아주 먼 시각으로
     sync-cron: "0 0 0 1 1 ?"
+
+analysis:
+  backlog:
+    # 테스트가 직접 호출한다. 백그라운드에서 끼어들지 않도록 첫 실행을 아주 늦춘다.
+    initial-delay-ms: 3600000
+    interval-ms: 3600000

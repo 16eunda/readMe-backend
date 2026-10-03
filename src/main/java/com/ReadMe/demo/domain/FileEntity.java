@@ -3,12 +3,15 @@ package com.ReadMe.demo.domain;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.DynamicUpdate;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
 @Entity
+// 바뀐 컬럼만 UPDATE 한다. 읽던 위치 저장과 AI 분석 결과 저장이 동시에 일어나도 서로의 컬럼을 옛 값으로 덮어쓰지 않게 한다.
+@DynamicUpdate
 @Getter
 @Table(
         name = "files",
@@ -25,7 +28,10 @@ import java.util.List;
             @Index(name = "idx_file_user_path_date_id", columnList = "user_id, path, date, id"),
             @Index(name = "idx_file_user_path_rating_id", columnList = "user_id, path, rating, id"),
             @Index(name = "idx_file_device_path_date_id", columnList = "device_id, path, date, id"),
-            @Index(name = "idx_file_device_path_rating_id", columnList = "device_id, path, rating, id")
+            @Index(name = "idx_file_device_path_rating_id", columnList = "device_id, path, rating, id"),
+
+            // 1분마다 도는 분석 대기 점검(findAnalysisBacklogIds)이 분석 완료(DONE)된 책을 훑지 않고 남은 책만 찾게 한다.
+            @Index(name = "idx_file_analysis_status", columnList = "analysis_status")
         }
 )
 @NoArgsConstructor
@@ -69,8 +75,14 @@ public class FileEntity {
     @Column(nullable = false)
     private boolean completed;
 
+    // PENDING(아직 분석 안 함) → PROCESSING(분석 중) → DONE(완료)
+    // 재시도 대상: FAILED(실패), LIMIT_EXCEEDED(오늘 자동 분석 한도 초과)
+    // QUEUED 는 예전 버전이 남긴 값이다. PENDING 과 똑같이 분석 대상으로 본다.
     @Column
-    private String analysisStatus; // PROCESSING, DONE, FAILED
+    private String analysisStatus;
+
+    // 마지막으로 분석을 시작한 시각. 서버가 분석 도중 꺼져 PROCESSING 으로 남은 파일과 하루 한 번 재시도할 파일을 가려낸다.
+    private LocalDateTime analysisStartedAt;
 
     @Column
     private String aiGenre;     // "로맨스", "판타지" 등

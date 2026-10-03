@@ -14,6 +14,7 @@ import java.time.Instant;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.when;
 
@@ -24,39 +25,25 @@ class FileDuplicateRegistrationTest {
     private FileRepository fileRepository;
     @Mock
     private FileReadLogRepository readLogRepository;
-    @Mock
-    private GeminiService geminiService;
-    @Mock
-    private QueueService queueService;
-    @Mock
-    private SubscriptionService subscriptionService;
 
     private FileService fileService;
 
     @BeforeEach
     void setUp() {
-        fileService = new FileService(
-                fileRepository,
-                readLogRepository,
-                geminiService,
-                queueService,
-                subscriptionService
-        );
+        fileService = new FileService(fileRepository, readLogRepository);
     }
 
     @Test
     void duplicateCheckIsDeviceScopedButRegistrationStillAllowsDuplicate() {
-        when(fileRepository.existsByDeviceIdAndTitleAndPath("device-a", "book.epub", "root"))
+        when(fileRepository.existsByDeviceIdAndUserIsNullAndTitleAndPath("device-a", "book.epub", "root"))
                 .thenReturn(true);
         when(fileRepository.saveAndFlush(any())).thenAnswer(invocation -> {
             FileEntity saved = invocation.getArgument(0);
             saved.setId(1L);
             return saved;
         });
-        when(subscriptionService.isPremium(null, "device-a")).thenReturn(false);
-        when(fileRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
-        assertEquals(true, fileService.isDuplicate("device-a", "book.epub", "root"));
+        assertEquals(true, fileService.isDuplicate("device-a", "book.epub", "root", null));
         FileEntity saved = fileService.saveFile(file(), "device-a", null);
 
         assertEquals(1L, saved.getId());
@@ -74,8 +61,6 @@ class FileDuplicateRegistrationTest {
             saved.setId(1L);
             return saved;
         });
-        when(subscriptionService.isPremium(null, "device-a")).thenReturn(false);
-        when(fileRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
         FileEntity saved = fileService.saveFile(file, "device-a", null);
 
@@ -84,23 +69,21 @@ class FileDuplicateRegistrationTest {
         verify(fileRepository, never()).findOwnAnalyzedSameTitle(any(), any(), any(), any());
     }
 
+    // 등록은 저장만 한다. 분석(같은 제목 결과 복사 포함)은 AnalysisBacklogScheduler 가 맡는다.
     @Test
-    void keepsRegisteredFileAndMarksFailedWhenAiPostProcessingFails() {
-        FileEntity file = file();
+    void registrationOnlySavesAndLeavesAnalysisToBackground() {
         when(fileRepository.saveAndFlush(any())).thenAnswer(invocation -> {
             FileEntity saved = invocation.getArgument(0);
             saved.setId(1L);
             return saved;
         });
-        when(subscriptionService.isPremium(null, "device-a")).thenReturn(true);
-        when(fileRepository.findOwnAnalyzedSameTitle("book", 1L, null, "device-a"))
-                .thenThrow(new RuntimeException("AI lookup failed"));
-        when(fileRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
-        FileEntity saved = fileService.saveFile(file, "device-a", null);
+        FileEntity saved = fileService.saveFile(file(), "device-a", null);
 
         assertEquals(1L, saved.getId());
-        assertEquals("FAILED", saved.getAnalysisStatus());
+        assertEquals("PENDING", saved.getAnalysisStatus());
+        verify(fileRepository).saveAndFlush(any());
+        verifyNoMoreInteractions(fileRepository);
     }
 
     private FileEntity file() {

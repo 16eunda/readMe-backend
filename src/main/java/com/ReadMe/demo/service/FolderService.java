@@ -56,8 +56,8 @@ public class FolderService {
         }
 
         List<FolderEntity> folders = (path == null)
-                ? folderRepository.findByDeviceId(deviceId)
-                : folderRepository.findByDeviceIdAndPath(deviceId, path);
+                ? folderRepository.findByDeviceIdAndUserIsNull(deviceId)
+                : folderRepository.findByDeviceIdAndUserIsNullAndPath(deviceId, path);
         return folders.stream().map(FolderDto::from).toList();
     }
 
@@ -118,7 +118,7 @@ public class FolderService {
                 children = folderRepository.findByUserAndPath(user, currentId.toString());
             } else {
                 children = folderRepository
-                        .findByDeviceIdAndPath(deviceId, currentId.toString());
+                        .findByDeviceIdAndUserIsNullAndPath(deviceId, currentId.toString());
             }
 
             for (FolderEntity child : children) {
@@ -148,14 +148,14 @@ public class FolderService {
         if (user != null) {
             fileRepository.deleteByUserAndPathIn(user, folderIds);
         } else {
-            fileRepository.deleteByDeviceIdAndPathIn(deviceId, folderIds);
+            fileRepository.deleteByDeviceIdAndUserIsNullAndPathIn(deviceId, folderIds);
         }
 
         // 폴더 삭제
         if (user != null) {
             folderRepository.deleteByUserAndIdIn(user, folderIds);
         } else {
-            folderRepository.deleteByDeviceIdAndIdIn(deviceId, folderIds);
+            folderRepository.deleteByDeviceIdAndUserIsNullAndIdIn(deviceId, folderIds);
         }
     }
 
@@ -172,7 +172,9 @@ public class FolderService {
         }
 
         // 게스트: deviceId 가 없으면 소유 판단 자체가 불가능하므로 거절한다.
-        if (deviceId == null || deviceId.isBlank() || !deviceId.equals(folder.getDeviceId())) {
+        // 이 기기에서 만들었어도 계정에 연결된 폴더는 로그아웃한 비회원이 바꿀 수 없다.
+        if (deviceId == null || deviceId.isBlank() || !deviceId.equals(folder.getDeviceId())
+                || folder.getUser() != null) {
             throw new UnauthorizedException("폴더 권한 없음");
         }
     }
@@ -211,7 +213,7 @@ public class FolderService {
         if (user != null) {
             fileCount = fileRepository.countByUserAndPathIn(user, deleteFolderIds);
         } else {
-            fileCount = fileRepository.countByDeviceIdAndPathIn(deviceId, deleteFolderIds);
+            fileCount = fileRepository.countByDeviceIdAndUserIsNullAndPathIn(deviceId, deleteFolderIds);
         }
 
         // 하위 폴더 또는 파일 존재 여부
@@ -238,9 +240,9 @@ public class FolderService {
 
         } else {
 
-            fileRepository.deleteByDeviceIdAndPathIn(deviceId, deleteFolderIds);
+            fileRepository.deleteByDeviceIdAndUserIsNullAndPathIn(deviceId, deleteFolderIds);
 
-            folderRepository.deleteByDeviceIdAndIdIn(deviceId, deleteFolderIds);
+            folderRepository.deleteByDeviceIdAndUserIsNullAndIdIn(deviceId, deleteFolderIds);
         }
     }
 

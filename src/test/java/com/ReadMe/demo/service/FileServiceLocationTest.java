@@ -40,12 +40,6 @@ class FileServiceLocationTest {
     @Mock
     private FileReadLogRepository readLogRepository;
     @Mock
-    private GeminiService geminiService;
-    @Mock
-    private QueueService queueService;
-    @Mock
-    private SubscriptionService subscriptionService;
-    @Mock
     private Authentication authentication;
     @Mock
     private CustomUserDetails userDetails;
@@ -54,13 +48,7 @@ class FileServiceLocationTest {
 
     @BeforeEach
     void setUp() {
-        fileService = new FileService(
-                fileRepository,
-                readLogRepository,
-                geminiService,
-                queueService,
-                subscriptionService
-        );
+        fileService = new FileService(fileRepository, readLogRepository);
     }
 
     @Test
@@ -97,13 +85,13 @@ class FileServiceLocationTest {
         assertTrue(response.isHasPrevious());
         assertTrue(response.isHasNext());
         assertEquals(List.of(targetDto), response.getContent());
-        verify(fileRepository, never()).findByIdAndDeviceId(any(), any());
+        verify(fileRepository, never()).findByIdAndDeviceIdAndUserIsNull(any(), any());
     }
 
     @Test
     void findsGuestFileLocationByDeviceId() {
         FileEntity target = targetFile();
-        when(fileRepository.findByIdAndDeviceId(123L, "device-a")).thenReturn(Optional.of(target));
+        when(fileRepository.findByIdAndDeviceIdAndUserIsNull(123L, "device-a")).thenReturn(Optional.of(target));
         when(fileRepository.countBeforeRatingAscByDeviceId("folder-7", "device-a", 4, 123L))
                 .thenReturn(2L);
         when(fileRepository.findByPathAndDeviceId(
@@ -137,7 +125,7 @@ class FileServiceLocationTest {
     @Test
     void recordReadUpdatesLastReadAtForOwnedDeviceFile() {
         FileEntity target = targetFile();
-        when(fileRepository.findByIdAndDeviceId(123L, "device-a")).thenReturn(Optional.of(target));
+        when(fileRepository.findByIdAndDeviceIdAndUserIsNull(123L, "device-a")).thenReturn(Optional.of(target));
 
         fileService.recordRead(123L, "device-a", null);
 
@@ -150,7 +138,7 @@ class FileServiceLocationTest {
         LocalDateTime previousReadAt = LocalDateTime.of(2026, 6, 10, 21, 0);
         target.setLastReadAt(previousReadAt);
         target.setAnalysisStatus("DONE");
-        when(fileRepository.findByIdAndDeviceId(123L, "device-a")).thenReturn(Optional.of(target));
+        when(fileRepository.findByIdAndDeviceIdAndUserIsNull(123L, "device-a")).thenReturn(Optional.of(target));
         when(fileRepository.save(target)).thenReturn(target);
 
         fileService.updateProgress(123L, Map.of("progress", 0.5), "device-a", null);
