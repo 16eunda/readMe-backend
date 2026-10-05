@@ -47,6 +47,11 @@ public class AuthService {
     // 회원가입
     @Transactional
     public void signup(String username, String password) {
+        // 예전에는 아이디 없이도 가입되어, 아무도 로그인할 수 없는 계정이 만들어졌다.
+        if (username == null || username.isBlank() || password == null || password.isBlank()) {
+            throw new IllegalArgumentException("아이디와 비밀번호를 입력해 주세요.");
+        }
+
         // 중복 체크
         if (userRepository.existsByUsername(username)) {
             throw new IllegalArgumentException("이미 존재하는 아이디입니다");

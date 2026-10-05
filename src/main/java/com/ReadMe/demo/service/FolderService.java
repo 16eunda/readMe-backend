@@ -7,6 +7,7 @@ import com.ReadMe.demo.dto.FolderBulkDeleteRequest;
 import com.ReadMe.demo.dto.FolderDto;
 import com.ReadMe.demo.dto.FolderRequest;
 import com.ReadMe.demo.exception.FolderNotEmptyException;
+import com.ReadMe.demo.exception.FolderNotFoundException;
 import com.ReadMe.demo.exception.UnauthorizedException;
 import com.ReadMe.demo.repository.FileRepository;
 import com.ReadMe.demo.repository.FolderRepository;
@@ -84,17 +85,17 @@ public class FolderService {
     // 폴더 업데이트 (이름, 경로)
     @Transactional
     public FolderDto updateFolder(Long id, Map<String, Object> body, String deviceId, Authentication authentication) {
-        FolderEntity folder = folderRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("폴더를 찾을 수 없습니다"));
-
         // 소유권 검증. 예전에는 검증 없이 남의 폴더도 수정할 수 있었다.
-        assertFolderOwner(folder, extractUser(authentication), deviceId);
+        FolderEntity folder = findOwnedFolder(id, extractUser(authentication), deviceId);
 
         if (body.containsKey("name")) {
-            folder.setName((String) body.get("name"));
+            if (!(body.get("name") instanceof String name) || name.isBlank()) {
+                throw new IllegalArgumentException("폴더 이름이 필요합니다.");
+            }
+            folder.setName(name);
         }
         if (body.containsKey("path")) {
-            folder.setPath((String) body.get("path"));
+            folder.setPath(validNewParent(folder, body.get("path")));
         }
 
         return FolderDto.from(folderRepository.save(folder));
@@ -103,14 +104,18 @@ public class FolderService {
     // 폴더 ID로 하위 폴더 ID 수집 (BFS)
     private List<Long> collectFolderIds(FolderEntity root, UserEntity user, String deviceId) {
 
-        List<Long> folderIds = new ArrayList<>();
+        // 이미 고리가 생긴 폴더(이동 검사가 없던 때 만들어진 것)에서도 끝나도록 한 번 본 폴더는 다시 보지 않는다.
+        // 예전에는 여기서 끝나지 않고 DB 연결을 붙잡은 채 메모리를 다 쓸 때까지 돌았다.
+        Set<Long> folderIds = new LinkedHashSet<>();
         Queue<Long> queue = new LinkedList<>();
 
         queue.add(root.getId());
 
         while (!queue.isEmpty()) {
             Long currentId = queue.poll();
-            folderIds.add(currentId);
+            if (!folderIds.add(currentId)) {
+                continue;
+            }
 
             List<FolderEntity> children;
 
@@ -126,30 +131,23 @@ public class FolderService {
             }
         }
 
-        return folderIds;
+        return new ArrayList<>(folderIds);
     }
 
     // 폴더 삭제
     @Transactional
-    public void delete(FolderRequest request, String deviceId, Authentication authentication) {
-
-        FolderEntity folder = folderRepository.findById(request.getId())
-                .orElseThrow(() -> new RuntimeException("폴더를 찾을 수 없습니다"));
+    public void delete(Long folderId, String deviceId, Authentication authentication) {
 
         UserEntity user = extractUser(authentication);
 
         // owner 검증
-        assertFolderOwner(folder, user, deviceId);
+        FolderEntity folder = findOwnedFolder(folderId, user, deviceId);
 
         // 하위 폴더 id 수집
         List<Long> folderIds = collectFolderIds(folder, user, deviceId);
 
         // 파일 삭제 (폴더 안 + 하위 폴더 파일)
-        if (user != null) {
-            fileRepository.deleteByUserAndPathIn(user, folderIds);
-        } else {
-            fileRepository.deleteByDeviceIdAndUserIsNullAndPathIn(deviceId, folderIds);
-        }
+        fileRepository.deleteFilesWithReadLogs(findOwnedFileIdsInFolders(user, deviceId, folderIds));
 
         // 폴더 삭제
         if (user != null) {
@@ -159,24 +157,74 @@ public class FolderService {
         }
     }
 
-    // 폴더 소유자 검증
-    private void assertFolderOwner(FolderEntity folder,
-                                   UserEntity user,
-                                   String deviceId) {
-
-        if (user != null) {
-            if (folder.getUser() == null || !user.getId().equals(folder.getUser().getId())) {
-                throw new UnauthorizedException("폴더 권한 없음");
-            }
-            return;
+    /**
+     * 요청자의 폴더만 돌려준다. 없는 폴더와 남의 폴더는 구분하지 않고 404 로 응답한다. (파일과 같은 규칙)
+     * 예전에는 없는 폴더는 500, 남의 폴더는 401 이었다. 401 은 앱이 토큰 재발급을 시도하게 만든다.
+     */
+    private FolderEntity findOwnedFolder(Long folderId, UserEntity user, String deviceId) {
+        if (folderId == null) {
+            throw new IllegalArgumentException("폴더 id가 필요합니다.");
         }
-
         // 게스트: deviceId 가 없으면 소유 판단 자체가 불가능하므로 거절한다.
-        // 이 기기에서 만들었어도 계정에 연결된 폴더는 로그아웃한 비회원이 바꿀 수 없다.
-        if (deviceId == null || deviceId.isBlank() || !deviceId.equals(folder.getDeviceId())
-                || folder.getUser() != null) {
-            throw new UnauthorizedException("폴더 권한 없음");
+        if (user == null && (deviceId == null || deviceId.isBlank())) {
+            throw new UnauthorizedException("인증 정보 없음");
         }
+
+        FolderEntity folder = folderRepository.findById(folderId)
+                .orElseThrow(() -> new FolderNotFoundException(folderId));
+
+        boolean owned = user != null
+                ? folder.getUser() != null && user.getId().equals(folder.getUser().getId())
+                // 이 기기에서 만들었어도 계정에 연결된 폴더는 로그아웃한 비회원이 바꿀 수 없다.
+                : folder.getUser() == null && deviceId.equals(folder.getDeviceId());
+        if (!owned) {
+            throw new FolderNotFoundException(folderId);
+        }
+        return folder;
+    }
+
+    /**
+     * 옮길 위치("root" 또는 폴더 id)를 검사한다.
+     * 자기 자신이나 자기 하위 폴더 안으로 옮기면 폴더들이 서로를 부모로 가리키는 고리가 되어 루트에서 닿을 수 없게 되고
+     * (안에 든 책까지 사라진 것처럼 보인다), 그 폴더를 지울 때 하위 폴더 수집이 끝나지 않는다.
+     * 앱의 이동 화면은 자기 자신과 바로 아래 폴더만 숨기므로 손자 폴더로는 옮길 수 있었다.
+     * 새 부모에서 루트 쪽으로 거슬러 올라가며 옮기려는 폴더를 만나는지 본다.
+     */
+    private String validNewParent(FolderEntity folder, Object requestedPath) {
+        if (!(requestedPath instanceof String newPath) || newPath.isBlank()) {
+            throw new IllegalArgumentException("옮길 위치(path)가 필요합니다.");
+        }
+
+        String movingId = String.valueOf(folder.getId());
+        Set<String> visited = new HashSet<>();
+        String current = newPath;
+        while (current != null && !"root".equals(current) && visited.add(current)) {
+            if (current.equals(movingId)) {
+                throw new IllegalArgumentException("폴더를 자기 자신이나 하위 폴더 안으로 옮길 수 없습니다.");
+            }
+            Long parentId = parseFolderId(current);
+            if (parentId == null) {
+                break;
+            }
+            current = folderRepository.findById(parentId).map(FolderEntity::getPath).orElse(null);
+        }
+        return newPath;
+    }
+
+    private static Long parseFolderId(String path) {
+        try {
+            return Long.valueOf(path);
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    // 파일의 path 는 폴더 id 를 문자열로 담는다.
+    private List<Long> findOwnedFileIdsInFolders(UserEntity user, String deviceId, List<Long> folderIds) {
+        List<String> paths = folderIds.stream().map(String::valueOf).toList();
+        return user != null
+                ? fileRepository.findIdsByUserIdAndPathIn(user.getId(), paths)
+                : fileRepository.findGuestIdsByDeviceIdAndPathIn(deviceId, paths);
     }
 
     @Transactional
@@ -185,6 +233,9 @@ public class FolderService {
                            Authentication authentication) {
 
         List<Long> folderIds = request.getFolderIds();
+        if (folderIds == null || folderIds.isEmpty()) {
+            throw new IllegalArgumentException("삭제할 폴더 id(folderIds)가 필요합니다.");
+        }
         boolean force = request.isForce();
 
         UserEntity user = extractUser(authentication);
@@ -194,10 +245,7 @@ public class FolderService {
         // 1️⃣ BFS로 모든 하위 폴더 수집
         for (Long folderId : folderIds) {
 
-            FolderEntity folder = folderRepository.findById(folderId)
-                    .orElseThrow(() -> new RuntimeException("폴더 없음"));
-
-            assertFolderOwner(folder, user, deviceId);
+            FolderEntity folder = findOwnedFolder(folderId, user, deviceId);
 
             List<Long> ids = collectFolderIds(folder, user, deviceId);
 
@@ -208,13 +256,8 @@ public class FolderService {
         List<Long> deleteFolderIds = new ArrayList<>(allFolderIds);
 
         // 2️⃣ 파일 개수 계산
-        long fileCount;
-
-        if (user != null) {
-            fileCount = fileRepository.countByUserAndPathIn(user, deleteFolderIds);
-        } else {
-            fileCount = fileRepository.countByDeviceIdAndUserIsNullAndPathIn(deviceId, deleteFolderIds);
-        }
+        List<Long> fileIds = findOwnedFileIdsInFolders(user, deviceId, deleteFolderIds);
+        long fileCount = fileIds.size();
 
         // 하위 폴더 또는 파일 존재 여부
         boolean hasChildren = fileCount > 0 || deleteFolderIds.size() > folderIds.size();
@@ -232,29 +275,21 @@ public class FolderService {
         }
 
         // 4️⃣ 실제 삭제
+        fileRepository.deleteFilesWithReadLogs(fileIds);
+
         if (user != null) {
-
-            fileRepository.deleteByUserAndPathIn(user, deleteFolderIds);
-
             folderRepository.deleteByUserAndIdIn(user, deleteFolderIds);
-
         } else {
-
-            fileRepository.deleteByDeviceIdAndUserIsNullAndPathIn(deviceId, deleteFolderIds);
-
             folderRepository.deleteByDeviceIdAndUserIsNullAndIdIn(deviceId, deleteFolderIds);
         }
     }
 
     @Transactional
     public FolderDto moveFolder(Long id, String newPath, String deviceId, Authentication authentication) {
-        FolderEntity folder = folderRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("Folder not found: " + id));
-
         // 소유권 검증. 예전에는 검증 없이 남의 폴더도 이동시킬 수 있었다.
-        assertFolderOwner(folder, extractUser(authentication), deviceId);
+        FolderEntity folder = findOwnedFolder(id, extractUser(authentication), deviceId);
 
-        folder.setPath(newPath);
+        folder.setPath(validNewParent(folder, newPath));
         return FolderDto.from(folderRepository.save(folder));
     }
 }

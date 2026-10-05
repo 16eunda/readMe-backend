@@ -8,6 +8,7 @@ import com.ReadMe.demo.dto.SignupRequest;
 import com.ReadMe.demo.exception.UnauthorizedException;
 import com.ReadMe.demo.security.CustomUserDetails;
 import com.ReadMe.demo.service.AuthService;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -15,6 +16,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
 
+@Slf4j
 @RestController
 @RequestMapping("/auth")
 @CrossOrigin(origins = "*")
@@ -58,7 +60,9 @@ public class AuthController {
         } catch (IllegalArgumentException e) {
             return ResponseEntity.status(401).body(e.getMessage());
         } catch (Exception e) {
-            return ResponseEntity.status(500).body("서버 오류: " + e.getMessage());
+            // 5xx 면 앱은 로그인을 유지한다. 내부 메시지(DB 주소 등)는 응답에 싣지 않고 로그에만 남긴다.
+            log.error("토큰 재발급 중 서버 오류", e);
+            return ResponseEntity.status(500).body("서버 오류");
         }
     }
 

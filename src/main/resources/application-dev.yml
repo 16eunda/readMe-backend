@@ -21,11 +21,12 @@ spring:
   jpa:
     hibernate:
       ddl-auto: update
-    show-sql: true
+    # 운영에서 모든 SQL 을 표준 출력으로 찍으면 로그가 빠르게 쌓이고 느려진다. 로컬에서 보려면 .env 에 JPA_SHOW_SQL=true
+    show-sql: ${JPA_SHOW_SQL:false}
     open-in-view: false
     properties:
       hibernate:
-        format_sql: true
+        format_sql: ${JPA_SHOW_SQL:false}
 
   logging:
     level:

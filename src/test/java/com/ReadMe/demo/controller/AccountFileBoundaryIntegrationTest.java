@@ -124,8 +124,9 @@ class AccountFileBoundaryIntegrationTest {
         assertThat(api.send("GET", "/files/" + fileId, null, null, phone).statusCode()).isEqualTo(404);
         assertThat(api.send("PATCH", "/files/" + fileId + "/progress", "{\"progress\":0.9}", null, phone).statusCode())
                 .isEqualTo(404);
+        // 파일과 같이 남의 폴더는 "없는 폴더"(404)로 응답한다.
         assertThat(api.send("PATCH", "/folders/" + folder.path("id").asText(), "{\"name\":\"hacked\"}", null, phone)
-                .statusCode()).isEqualTo(401);
+                .statusCode()).isEqualTo(404);
         api.send("DELETE", "/files", "{\"ids\":[" + fileId + "]}", null, phone);
         api.send("POST", "/folders/bulk-delete",
                 "{\"folderIds\":[" + folder.path("id").asText() + "],\"force\":true}", null, phone);

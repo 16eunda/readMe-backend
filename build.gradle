@@ -28,11 +28,13 @@ dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
 	implementation 'org.springframework.boot:spring-boot-starter-web'
 	implementation 'org.springframework.boot:spring-boot-starter-security'
-	implementation 'org.springframework.boot:spring-boot-devtools'
+	// 로컬 실행(bootRun)에서만 쓴다. 배포용 jar 에는 들어가지 않는다.
+	developmentOnly 'org.springframework.boot:spring-boot-devtools'
 	implementation 'io.jsonwebtoken:jjwt-api:0.11.5'
 	implementation 'org.postgresql:postgresql'
 	compileOnly 'org.projectlombok:lombok'
-	runtimeOnly 'com.h2database:h2'
+	// 테스트 DB 전용. 운영 실행에는 넣지 않는다(H2 콘솔이 열리면 서버에서 코드를 실행할 수 있다).
+	testRuntimeOnly 'com.h2database:h2'
 	runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.11.5'
 	runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.11.5'
 	annotationProcessor 'org.projectlombok:lombok'

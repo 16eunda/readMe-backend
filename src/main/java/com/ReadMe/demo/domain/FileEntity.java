@@ -56,6 +56,10 @@ public class FileEntity {
     private String preview; // 미리보기
     @Column(columnDefinition = "TEXT")
     private String readingPreview; // 읽는 중 미리보기 (txt: 현재 페이지 텍스트, epub: 현재 cfi 위치)
+    // 앱 입력창은 300자까지 받는다. 기본 길이(255)면 256자부터 저장에 실패해 리뷰가 사라졌다.
+    // ddl-auto=update 는 기존 컬럼 길이를 바꾸지 않으므로 운영 DB 는 직접 늘린다:
+    //   ALTER TABLE files ALTER COLUMN review TYPE varchar(1000);
+    @Column(length = 1000)
     private String review;
     @Column(nullable = false)
     private Instant date;

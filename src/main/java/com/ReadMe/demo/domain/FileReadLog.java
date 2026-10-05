@@ -5,7 +5,11 @@ import jakarta.persistence.*;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "file_read_log")
+// 진행도를 저장할 때마다 "이 책의 오늘 기록"을 찾고, 파일을 지울 때 그 파일의 기록을 지운다.
+// PostgreSQL 은 FK 에 인덱스를 자동으로 만들지 않아서, 이게 없으면 기록이 쌓일수록 매번 테이블 전체를 읽는다.
+@Table(name = "file_read_log", indexes = {
+        @Index(name = "idx_read_log_file_read_at", columnList = "file_id, read_at")
+})
 public class FileReadLog {
 
     @Id

@@ -26,7 +26,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
@@ -34,6 +33,11 @@ public class FileService {
 
     private final FileRepository fileRepository;
     private final FileReadLogRepository readLogRepository;
+
+    // 한 번에 돌려주는 목록 크기 상한. 앱은 15개씩 요청한다. 상한이 없으면 size 하나로 전체 서재를 메모리에 올린다.
+    private static final int MAX_PAGE_SIZE = 100;
+    // FileEntity.review 컬럼 길이. 앱 입력창은 300자까지 받는다.
+    private static final int MAX_REVIEW_LENGTH = 1000;
 
     // 제목 정규화 (확장자 제거)
     // "MyBook.epub" -> "MyBook"
@@ -98,27 +102,18 @@ public class FileService {
 
     // 파일조회
     // 경로로 조회 (로그인/게스트 모두 지원, 페이징/정렬)
+    // 조회 실패(DB 장애 등)를 빈 목록으로 바꾸지 않는다. 예전에는 200 + 빈 목록을 돌려줘서
+    // 앱이 "서재가 비었다"로 보고 캐시까지 빈 목록으로 덮어썼다. 앱은 오류 응답이면 기존 목록을 유지한다.
     public Page<FileDto> getFilesByPath(String path, String deviceId, String userId, int page, int size, String sort) {
         SortSpec sortSpec = parseSort(sort);
+        validatePageSize(size);
         Pageable pageable = PageRequest.of(page, size, sortSpec.toSort());
 
         // userId가 있으면 userId로 조회 (로그인 상태)
         if (userId != null && !userId.isEmpty()) {
-            try {
-                return fileRepository.findByPathAndUserId(path, Long.parseLong(userId), pageable);
-            } catch (Exception e) {
-                System.out.println("파일 조회 실패: " + e.getMessage());
-            }
-        } else {
-            try {
-                return fileRepository.findByPathAndDeviceId(path, deviceId, pageable);
-            } catch (Exception e) {
-                System.out.println("파일 조회 실패: " + e.getMessage());
-            }
-
+            return fileRepository.findByPathAndUserId(path, Long.parseLong(userId), pageable);
         }
-
-        return Page.empty(pageable);
+        return fileRepository.findByPathAndDeviceId(path, deviceId, pageable);
     }
 
     @Transactional(readOnly = true)
@@ -129,9 +124,7 @@ public class FileService {
             String deviceId,
             Authentication authentication
     ) {
-        if (size < 1 || size > 100) {
-            throw new IllegalArgumentException("size는 1 이상 100 이하여야 합니다.");
-        }
+        validatePageSize(size);
 
         SortSpec sortSpec = parseSort(sort);
         Long userId = extractUserId(authentication);
@@ -206,6 +199,12 @@ public class FileService {
         };
     }
 
+    private static void validatePageSize(int size) {
+        if (size < 1 || size > MAX_PAGE_SIZE) {
+            throw new IllegalArgumentException("size는 1 이상 " + MAX_PAGE_SIZE + " 이하여야 합니다.");
+        }
+    }
+
     private Long extractUserId(Authentication authentication) {
         if (authentication != null && authentication.isAuthenticated()
                 && authentication.getPrincipal() instanceof CustomUserDetails details) {
@@ -246,15 +245,12 @@ public class FileService {
 
     // 파일 검색
     // 사용자가 입력한 키워드가 제목에 포함된 파일을 검색 (로그인/게스트 모두 지원)
+    // 정렬은 목록과 같은 규칙(date|rating + id)을 쓴다. 예전에는 아무 컬럼 이름이나 받아 없는 컬럼이면 500 이 났고,
+    // 별점이 같은 책이 많으면 페이지 경계가 흔들려 무한 스크롤에서 책이 겹치거나 빠졌다.
     public Page<FileDto> searchFiles(String keyword, int page, int size, String sort, String deviceId, Authentication authentication) {
-        String[] sortParams = sort.split(",");
-        String property = sortParams[0];
-        Sort.Direction direction = Sort.Direction.DESC;
-        if (sortParams.length > 1 && sortParams[1].equalsIgnoreCase("asc")) {
-            direction = Sort.Direction.ASC;
-        }
-
-        Pageable pageable = PageRequest.of(page, size, Sort.by(direction, property));
+        SortSpec sortSpec = parseSort(sort);
+        validatePageSize(size);
+        Pageable pageable = PageRequest.of(page, size, sortSpec.toSort());
 
         UserEntity user = null;
 
@@ -265,12 +261,10 @@ public class FileService {
 
 
         if (user != null) {
-            System.out.println("🔍 검색 - 로그인 상태, userId: " + user.getId() + ", keyword: " + keyword);
             return fileRepository.findByUserIdAndTitleContainingIgnoreCase(user.getId(), keyword, pageable);
         } else if (deviceId != null && !deviceId.isEmpty()) {
             return fileRepository.findByDeviceIdAndTitleContainingIgnoreCase(deviceId, keyword, pageable);
         }
-        System.out.println("검색 - 인증 정보 없음, 검색 실패");
         return Page.empty(pageable);
     }
 
@@ -280,43 +274,52 @@ public class FileService {
         // 소유권 검증. 예전에는 findById 만 해서 남의 파일도 수정할 수 있었다.
         FileEntity file = findOwnedFile(id, extractUserId(authentication), deviceId);
 
+        // 값의 형식이 틀리면 400 이다. 예전에는 형변환 오류(500)나 NOT NULL 위반(409)이 났다.
         if (body.containsKey("title")) {
-            file.setTitle((String) body.get("title"));
+            file.setTitle(requiredText(body, "title"));
         }
         if (body.containsKey("review")) {
-            file.setReview((String) body.get("review"));
+            String review = optionalText(body, "review");
+            if (review != null && review.length() > MAX_REVIEW_LENGTH) {
+                throw new IllegalArgumentException("리뷰는 " + MAX_REVIEW_LENGTH + "자 이하여야 합니다.");
+            }
+            file.setReview(review);
         }
-        if (body.containsKey("rating")) {
-            file.setRating(((Number) body.get("rating")).intValue());
+        if (body.get("rating") != null) {
+            if (!(body.get("rating") instanceof Number rating)) {
+                throw new IllegalArgumentException("rating은 숫자여야 합니다.");
+            }
+            file.setRating(rating.intValue());
         }
         if (body.containsKey("path")) {
-            file.setPath((String) body.get("path"));
+            file.setPath(requiredText(body, "path"));
         }
 
         return fileRepository.save(file);
     }
 
     // 파일삭제
+    // 같은 삭제가 다시 오거나(재시도) 동시에 와도(연타·여러 기기) 200 이다. 이미 없는 파일은 건너뛴다.
     @Transactional
     public void deleteFiles(List<Long> ids, String deviceId, Authentication authentication) {
-
-        UserEntity user = null;
-
-        if (authentication != null && authentication.isAuthenticated()
-                && authentication.getPrincipal() instanceof CustomUserDetails) {
-
-            user = ((CustomUserDetails) authentication.getPrincipal()).getUser();
+        if (ids == null) {
+            throw new IllegalArgumentException("삭제할 파일 id(ids)가 필요합니다.");
         }
 
+        Long userId = extractUserId(authentication);
+
         // 로그인 상태면 userId로 삭제, 게스트 상태면 deviceId로 삭제
-        if (user != null) {
-            fileRepository.deleteByUserAndIdIn(user, ids);
+        List<Long> ownedIds;
+        if (userId != null) {
+            ownedIds = ids.isEmpty() ? List.of() : fileRepository.findIdsByUserIdAndIdIn(userId, ids);
         } else if (deviceId != null && !deviceId.isBlank()) {
-            fileRepository.deleteByDeviceIdAndUserIsNullAndIdIn(deviceId, ids);
+            ownedIds = ids.isEmpty() ? List.of() : fileRepository.findGuestIdsByDeviceIdAndIdIn(deviceId, ids);
         } else {
             // deviceId 없이 삭제하면 device_id IS NULL 조건이 되어 소유자를 확인할 수 없다.
             throw new UnauthorizedException("인증 정보 없음");
         }
+
+        fileRepository.deleteFilesWithReadLogs(ownedIds);
     }
 
     // 파일 ID로 조회 (본인 파일만)
@@ -340,11 +343,11 @@ public class FileService {
         }
 
         if (body.containsKey("epubCfi")) {
-            file.setEpubCfi((String) body.get("epubCfi"));
+            file.setEpubCfi(optionalText(body, "epubCfi"));
         }
 
         if (body.containsKey("readingPreview")) {
-            file.setReadingPreview((String) body.get("readingPreview"));
+            file.setReadingPreview(optionalText(body, "readingPreview"));
         }
 
         if (body.get("anchorRatio") instanceof Number r) {
@@ -363,9 +366,7 @@ public class FileService {
             LocalDateTime startOfDay = LocalDateTime.now().toLocalDate().atStartOfDay();
             LocalDateTime startOfNextDay = startOfDay.plusDays(1);
 
-            Optional<FileReadLog> existingLog = readLogRepository.findByFileIdAndToday(id, startOfDay, startOfNextDay);
-
-            if (existingLog.isEmpty()) {
+            if (readLogRepository.countByFileIdAndToday(id, startOfDay, startOfNextDay) == 0) {
                 FileReadLog log = new FileReadLog();
                 log.setFile(file);
                 log.setReadAt(LocalDateTime.now());
@@ -375,6 +376,22 @@ public class FileService {
         }
 
         return fileRepository.save(file);
+    }
+
+    private static String optionalText(Map<String, Object> body, String key) {
+        Object value = body.get(key);
+        if (value != null && !(value instanceof String)) {
+            throw new IllegalArgumentException(key + "는 문자열이어야 합니다.");
+        }
+        return (String) value;
+    }
+
+    private static String requiredText(Map<String, Object> body, String key) {
+        String value = optionalText(body, key);
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException(key + "가 필요합니다.");
+        }
+        return value;
     }
 
     // 중복 여부 판단 (안내용). 요청자 화면에 보이는 목록과 같은 범위에서 찾는다.

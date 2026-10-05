@@ -144,11 +144,39 @@ public interface FileRepository extends JpaRepository<FileEntity, Long> {
             @Param("rating") int rating, @Param("id") Long id
     );
 
-    // 추가: userId와 id 리스트로 파일 삭제 (보안 필터링)
-    void deleteByUserAndIdIn(UserEntity user, List<Long> ids);
+    // ===== 삭제 =====
+    // 지울 파일은 먼저 소유 범위 안의 id 만 골라낸 뒤 DELETE 문으로 지운다.
+    // 예전에는 엔티티를 읽어 하나씩 지워서, 같은 삭제가 동시에 오면(연타·재시도·여러 기기) 늦은 쪽이
+    // 이미 지워진 행을 지우려다 실패해 500 을 받았다. 폴더 안 파일 수천 개도 한 번에 지운다.
 
-    // deviceId와 id 리스트로 파일 삭제
-    void deleteByDeviceIdAndUserIsNullAndIdIn(String deviceId, List<Long> ids);
+    @Query("SELECT f.id FROM FileEntity f WHERE f.user.id = :userId AND f.id IN :ids")
+    List<Long> findIdsByUserIdAndIdIn(@Param("userId") Long userId, @Param("ids") List<Long> ids);
+
+    @Query("SELECT f.id FROM FileEntity f WHERE f.deviceId = :deviceId AND f.user IS NULL AND f.id IN :ids")
+    List<Long> findGuestIdsByDeviceIdAndIdIn(@Param("deviceId") String deviceId, @Param("ids") List<Long> ids);
+
+    @Query("SELECT f.id FROM FileEntity f WHERE f.user.id = :userId AND f.path IN :paths")
+    List<Long> findIdsByUserIdAndPathIn(@Param("userId") Long userId, @Param("paths") List<String> paths);
+
+    @Query("SELECT f.id FROM FileEntity f WHERE f.deviceId = :deviceId AND f.user IS NULL AND f.path IN :paths")
+    List<Long> findGuestIdsByDeviceIdAndPathIn(@Param("deviceId") String deviceId, @Param("paths") List<String> paths);
+
+    @Modifying
+    @Query("DELETE FROM FileReadLog r WHERE r.file.id IN :fileIds")
+    int deleteReadLogsByFileIdIn(@Param("fileIds") List<Long> fileIds);
+
+    @Modifying
+    @Query("DELETE FROM FileEntity f WHERE f.id IN :ids")
+    int deleteByIdIn(@Param("ids") List<Long> ids);
+
+    /** 읽기 기록(FK)을 먼저 지우고 파일을 지운다. 이미 지워진 id 가 섞여 있어도 오류 없이 넘어간다. 호출부 트랜잭션 안에서 쓴다. */
+    default void deleteFilesWithReadLogs(List<Long> fileIds) {
+        if (fileIds.isEmpty()) {
+            return;
+        }
+        deleteReadLogsByFileIdIn(fileIds);
+        deleteByIdIn(fileIds);
+    }
 
     // 회원 탈퇴 시 계정의 파일 전체 삭제 (엔티티 단위로 지우므로 읽기 기록도 cascade 로 함께 삭제된다)
     void deleteByUser(UserEntity user);
@@ -297,18 +325,6 @@ public interface FileRepository extends JpaRepository<FileEntity, Long> {
 
         return found.isEmpty() ? null : found.get(0);
     }
-
-    // userId와 path로 파일 삭제 (폴더 삭제 시)
-    void deleteByUserAndPathIn(UserEntity user, List<Long> folderIds);
-
-    // deviceId와 path로 파일 삭제 (폴더 삭제 시)
-    void deleteByDeviceIdAndUserIsNullAndPathIn(String deviceId, List<Long> folderIds);
-
-    // userId와 경로 리스트로 폴더 수 확인 (삭제 전 내부 파일 존재 여부 확인)
-    long countByUserAndPathIn(UserEntity user, List<Long> paths);
-
-    // deviceId와 경로 리스트로 폴더 수 확인 (삭제 전 내부 파일 존재 여부 확인)
-    long countByDeviceIdAndUserIsNullAndPathIn(String deviceId, List<Long> paths);
 
     // deviceId를 userId와 연결
     @Modifying

@@ -9,7 +9,6 @@ import org.springframework.data.repository.query.Param;
 
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Optional;
 
 public interface FileReadLogRepository extends JpaRepository<FileReadLog, Long> {
 
@@ -131,14 +130,16 @@ public interface FileReadLogRepository extends JpaRepository<FileReadLog, Long> 
     );
 
 
-    // 오늘 날짜에 해당 파일의 로그가 있는지 확인
+    // 오늘 날짜에 해당 파일의 로그가 몇 개인지 센다.
+    // 예전에는 한 건만 기대하고(Optional) 조회해서, 두 기기가 동시에 저장해 로그가 2개 생기면
+    // 그날 그 책의 진행도 저장이 자정까지 전부 500 이 났다.
     @Query("""
-        SELECT r FROM FileReadLog r
+        SELECT COUNT(r) FROM FileReadLog r
         WHERE r.file.id = :fileId
         AND r.readAt >= :startOfDay
         AND r.readAt < :startOfNextDay
     """)
-    Optional<FileReadLog> findByFileIdAndToday(
+    long countByFileIdAndToday(
             @Param("fileId") Long fileId,
             @Param("startOfDay") LocalDateTime startOfDay,
             @Param("startOfNextDay") LocalDateTime startOfNextDay
