@@ -28,13 +28,14 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     /**
      * 이 필터가 토큰을 검사하지 않는 경로.
-     * - 로그인/회원가입/재발급: 토큰이 필요 없거나, 재발급처럼 컨트롤러가 refreshToken 을 직접 검사한다.
+     * - 로그인/회원가입/재발급/로그아웃: 토큰이 필요 없거나, 재발급·로그아웃처럼 컨트롤러가 refreshToken 을 직접 검사한다.
      * - 외부 웹훅: Pub/Sub push 인증을 켜면 우리 JWT 가 아닌 Authorization 헤더가 온다.
      */
     private static final List<String> EXCLUDED_PATHS = List.of(
             "/auth/login",
             "/auth/signup",
             "/auth/refresh",
+            "/auth/logout",
             "/subscriptions/webhook/**"
     );
     private static final AntPathMatcher PATH_MATCHER = new AntPathMatcher();

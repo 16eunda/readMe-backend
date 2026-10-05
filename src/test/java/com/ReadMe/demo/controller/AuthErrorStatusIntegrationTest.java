@@ -107,14 +107,14 @@ class AuthErrorStatusIntegrationTest {
 
     @Test
     void refreshForUnknownUserReturns401() throws Exception {
-        String refreshToken = jwtTokenProvider.generateRefreshToken("987654321");
+        String refreshToken = jwtTokenProvider.generateRefreshToken("987654321", 1L);
 
         assertThat(post("/auth/refresh", refreshToken).statusCode()).isEqualTo(401);
     }
 
     @Test
     void refreshRenewsRefreshTokenSoActiveUsersStayLoggedIn() throws Exception {
-        String refreshToken = jwtTokenProvider.generateRefreshToken(createUser().getId().toString());
+        String refreshToken = loginAndGetRefreshToken();
 
         HttpResponse<String> response = post("/auth/refresh", refreshToken);
 
@@ -212,7 +212,7 @@ class AuthErrorStatusIntegrationTest {
 
     @Test
     void refreshTokenCannotBeUsedAsAccessToken() throws Exception {
-        String refreshToken = jwtTokenProvider.generateRefreshToken(createUser().getId().toString());
+        String refreshToken = jwtTokenProvider.generateRefreshToken(createUser().getId().toString(), 1L);
 
         assertThat(get("/files", refreshToken, "device-a").statusCode()).isEqualTo(401);
     }
@@ -279,6 +279,13 @@ class AuthErrorStatusIntegrationTest {
         user.setPassword("unused");
         user.setCreatedAt(LocalDateTime.now());
         return userRepository.save(user);
+    }
+
+    // refreshToken 은 로그인 세션과 묶이므로 실제 로그인으로 받는다.
+    private String loginAndGetRefreshToken() throws Exception {
+        String credentials = "{\"username\":\"user-" + UUID.randomUUID() + "\",\"password\":\"pw\"}";
+        assertThat(postJson("/auth/signup", credentials).statusCode()).isEqualTo(200);
+        return objectMapper.readTree(postJson("/auth/login", credentials).body()).path("refreshToken").asText();
     }
 
     private String expiredToken(String userId, String type) {

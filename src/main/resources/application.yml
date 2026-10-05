@@ -14,14 +14,20 @@ spring:
   profiles:
     active: dev
 
+  # H2 는 테스트 전용이다. devtools 가 켜진 실행(bootRun)에서도 콘솔(/h2-console)이 열리지 않게 명시적으로 끈다.
+  h2:
+    console:
+      enabled: false
+
   jpa:
     hibernate:
       ddl-auto: update
-    show-sql: true
+    # 운영에서 모든 SQL 을 표준 출력으로 찍으면 로그가 빠르게 쌓이고 느려진다. 로컬에서 보려면 .env 에 JPA_SHOW_SQL=true
+    show-sql: ${JPA_SHOW_SQL:false}
     database-platform: org.hibernate.dialect.PostgreSQLDialect
     properties:
       hibernate:
-        format_sql: true
+        format_sql: ${JPA_SHOW_SQL:false}
 
 server:
   port: ${PORT:8080}

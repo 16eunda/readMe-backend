@@ -55,11 +55,14 @@ public class FolderController {
 
 
     // 폴더 삭제
+    // 앱은 본문에도 같은 id 를 보낸다. 본문이 없으면 주소의 id 를 쓴다.
     @DeleteMapping("/{id}")
-    public void deleteFolder(@RequestBody FolderRequest request,
+    public void deleteFolder(@PathVariable Long id,
+                             @RequestBody(required = false) FolderRequest request,
                              @RequestHeader(value = "X-Device-Id", required = false) String deviceId,
                              Authentication authentication) {
-        folderService.delete(request, deviceId, authentication);
+        Long folderId = request != null && request.getId() != null ? request.getId() : id;
+        folderService.delete(folderId, deviceId, authentication);
     }
 
     @PostMapping("/bulk-delete")
