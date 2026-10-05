@@ -10,6 +10,7 @@ import org.springframework.stereotype.Component;
 
 import java.nio.charset.StandardCharsets;
 import java.security.Key;
+import java.time.Duration;
 import java.util.Date;
 
 // JwtTokenProvider.java
@@ -21,6 +22,10 @@ public class JwtTokenProvider {
 
     private static final long ACCESS_TOKEN_VALIDITY = 1000L * 60 * 60;             // 1시간
     private static final long REFRESH_TOKEN_VALIDITY = 1000L * 60 * 60 * 24 * 30; // 30일
+    public static final Duration REFRESH_TOKEN_LIFETIME = Duration.ofMillis(REFRESH_TOKEN_VALIDITY);
+
+    // refreshToken 이 속한 로그인 세션(RefreshSession) id. 로그아웃하면 세션을 지워 이 토큰을 무효로 만든다.
+    private static final String CLAIM_SESSION_ID = "sid";
 
     // 토큰 용도 구분. 이게 없으면 accessToken 으로도 재발급이 되어 무기한 연장이 가능하다.
     private static final String CLAIM_TOKEN_TYPE = "typ";
@@ -45,9 +50,9 @@ public class JwtTokenProvider {
     }
 
     /**
-     * refreshToken 생성
+     * refreshToken 생성. 로그인 세션 id 를 함께 넣는다.
      */
-    public String generateRefreshToken(String userId) {
+    public String generateRefreshToken(String userId, Long sessionId) {
         Date now = new Date();
         Date expiryDate = new Date(now.getTime() + REFRESH_TOKEN_VALIDITY);
         Key key = Keys.hmacShaKeyFor(secretKey.getBytes(StandardCharsets.UTF_8));
@@ -55,6 +60,7 @@ public class JwtTokenProvider {
         return Jwts.builder()
                 .setSubject(userId)
                 .claim(CLAIM_TOKEN_TYPE, TYPE_REFRESH)
+                .claim(CLAIM_SESSION_ID, sessionId)
                 .setIssuedAt(now)
                 .setExpiration(expiryDate)
                 .signWith(key, SignatureAlgorithm.HS512)
@@ -101,6 +107,27 @@ public class JwtTokenProvider {
         } catch (Exception e) {
             return false;
         }
+    }
+
+    /**
+     * refreshToken 의 로그인 세션 id. 만료된 토큰에서도 꺼낸다(만료된 토큰으로 로그아웃해도 세션은 지운다).
+     * 서명이 틀렸거나 세션 도입 전에 발급된 토큰이면 null.
+     */
+    public Long getSessionIdFromToken(String token) {
+        Claims claims;
+        try {
+            claims = Jwts.parserBuilder()
+                    .setSigningKey(getSigningKey())
+                    .build()
+                    .parseClaimsJws(token)
+                    .getBody();
+        } catch (ExpiredJwtException e) {
+            // 서명은 만료 확인 전에 검증된다.
+            claims = e.getClaims();
+        } catch (Exception e) {
+            return null;
+        }
+        return claims.get(CLAIM_SESSION_ID) instanceof Number sessionId ? sessionId.longValue() : null;
     }
 
     private Key getSigningKey() {
